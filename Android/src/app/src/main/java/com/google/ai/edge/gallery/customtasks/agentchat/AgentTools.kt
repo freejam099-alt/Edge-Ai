@@ -22,9 +22,9 @@ import com.google.ai.edge.gallery.skills.SkillsProvider
 import com.google.ai.edge.gallery.tools.CallJsSkillResultImage
 import com.google.ai.edge.gallery.tools.CallJsSkillResultWebview
 import com.google.ai.edge.gallery.tools.LoadSkillTool
+import com.google.ai.edge.gallery.tools.RunMcpTool
 import com.google.ai.edge.gallery.tools.RunIntentTool
 import com.google.ai.edge.gallery.tools.RunJsTool
-import com.google.ai.edge.gallery.tools.RunMcpTool
 import com.google.ai.edge.gallery.tools.ToolAction
 import com.google.ai.edge.gallery.tools.ToolDefinition
 import com.google.ai.edge.gallery.tools.ToolsProvider
@@ -33,6 +33,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.runBlocking
+import org.json.JSONObject
 
 interface AgentTools : ToolsProvider {
   var context: Context
@@ -46,6 +47,7 @@ interface AgentTools : ToolsProvider {
   var resultWebviewToShow: CallJsSkillResultWebview?
 
   fun sendToolAction(action: ToolAction)
+  fun invokeCloudTool(functionName: String, arguments: JSONObject): Any?
 }
 
 open class AgentToolsImpl : AgentTools {
@@ -79,6 +81,29 @@ open class AgentToolsImpl : AgentTools {
 
   override fun getAvailableTools(): List<ToolDefinition> {
     return listOf(loadSkillTool, runMcpTool, runJsTool, runIntentTool) + activeTools
+  }
+
+  override fun invokeCloudTool(functionName: String, arguments: JSONObject): Any? {
+    return when (functionName) {
+      "loadSkill" -> loadSkillTool.loadSkill(arguments.optString("skillName"))
+      "runJs" ->
+        runJsTool.runJs(
+          skillName = arguments.optString("skillName"),
+          scriptName = arguments.optString("scriptName", "index.html"),
+          data = arguments.optString("data", "{}"),
+        )
+      "runMcpTool" ->
+        runMcpTool.runMcpTool(
+          toolName = arguments.optString("toolName"),
+          input = arguments.optString("input", "{}"),
+        )
+      "runIntent" ->
+        runIntentTool.runIntent(
+          intent = arguments.optString("intent"),
+          parameters = arguments.optString("parameters", "{}"),
+        )
+      else -> mapOf("error" to "Unknown function: $functionName", "status" to "failed")
+    }
   }
 
   override fun registerTool(tool: ToolDefinition) {

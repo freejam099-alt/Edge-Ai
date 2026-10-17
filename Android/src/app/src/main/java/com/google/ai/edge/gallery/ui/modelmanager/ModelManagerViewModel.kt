@@ -31,6 +31,7 @@ import com.google.ai.edge.gallery.common.SystemPromptHelper
 import com.google.ai.edge.gallery.common.getJsonResponse
 import com.google.ai.edge.gallery.common.getModelStorageDir
 import com.google.ai.edge.gallery.common.isAICoreSupported
+import com.google.ai.edge.gallery.customtasks.agentchat.CLOUD_AGENT_MODEL
 import com.google.ai.edge.gallery.customtasks.common.CustomTask
 import com.google.ai.edge.gallery.data.Accelerator
 import com.google.ai.edge.gallery.data.BackendSpec
@@ -385,6 +386,7 @@ constructor(
   }
 
   fun selectModel(model: Model) {
+    if (model.name != CLOUD_AGENT_MODEL.name) return
     if (_uiState.value.selectedModel.name != model.name) {
       _uiState.update { it.copy(selectedModel = model) }
     }
@@ -395,6 +397,7 @@ constructor(
     model: Model,
     includeExtraDataFiles: Boolean = isDownloadOptionalComponentsEnabled(model.name),
   ) {
+    if (model.name != CLOUD_AGENT_MODEL.name) return
     // Update status.
     setDownloadStatus(
       curModel = model,
@@ -772,6 +775,10 @@ constructor(
     onDone: () -> Unit = {},
     onError: (String) -> Unit = {},
   ) {
+    if (model.name != CLOUD_AGENT_MODEL.name) {
+      onError("This app uses cloud models only. Choose a cloud provider in Agent Skills settings.")
+      return
+    }
     viewModelScope.launch {
       // Skip if initialized already.
       if (!force && model.initStatusFlow.value is Model.InitializationStatus.Initialized) {
@@ -1030,63 +1037,7 @@ constructor(
     }
 
   fun addImportedLlmModel(info: ImportedModel) {
-    Log.d(TAG, "adding imported llm model: $info")
-
-    val importsDir = File(modelsDir, IMPORTS_DIR)
-    if (!importsDir.exists()) {
-      importsDir.mkdirs()
-    }
-
-    // Create model.
-    val model = createModelFromImportedModelInfo(info = info)
-
-    // Remove duplicated imported model if existed across all tasks.
-    for (task in uiState.value.tasks) {
-      val modelIndex =
-        task.models.indexOfFirst { info.fileName == it.name && it.downloadInfo.imported }
-      if (modelIndex >= 0) {
-        Log.d(TAG, "duplicated imported model found in task. Removing it first")
-        task.models.removeAt(modelIndex)
-        task.updateTrigger.value = System.currentTimeMillis()
-      }
-    }
-
-    for (task in getTasksByIds(ids = model.getTargetTaskIdsForImportedModel())) {
-      task.models.add(model)
-      task.updateTrigger.value = System.currentTimeMillis()
-    }
-
-    // Add initial status and states.
-    val modelDownloadStatus = uiState.value.modelDownloadStatus.toMutableMap()
-    if (model.downloadInfo.url.isNotEmpty()) {
-      modelDownloadStatus[model.name] = getModelDownloadStatus(model = model)
-    } else {
-      modelDownloadStatus[model.name] =
-        ModelDownloadStatus(
-          status = ModelDownloadStatusType.SUCCEEDED,
-          receivedBytes = info.fileSize,
-          totalBytes = info.fileSize,
-        )
-    }
-
-    // Update ui state.
-    _uiState.update {
-      it.copy(
-        tasks = it.tasks.toList(),
-        modelDownloadStatus = modelDownloadStatus,
-        modelImportingUpdateTrigger = System.currentTimeMillis(),
-      )
-    }
-
-    // Add to data store.
-    val importedModels = dataStoreRepository.readImportedModels().toMutableList()
-    val importedModelIndex = importedModels.indexOfFirst { info.fileName == it.fileName }
-    if (importedModelIndex >= 0) {
-      Log.d(TAG, "duplicated imported model found in data store. Removing it first")
-      importedModels.removeAt(importedModelIndex)
-    }
-    importedModels.add(info)
-    dataStoreRepository.saveImportedModels(importedModels = importedModels)
+    Log.i(TAG, "Ignoring imported device model in cloud-only mode: ${info.fileName}")
   }
 
   fun getTokenStatusAndData(): TokenStatusAndData {
@@ -1273,167 +1224,34 @@ constructor(
   }
 
   fun loadModelAllowlist() {
-    _uiState.update { it.copy(loadingModelAllowlist = true, loadingModelAllowlistError = "") }
-
-    viewModelScope.launch(allowlistLoadingDispatcher) {
-      try {
-        // Clear existing allowlist models.
-        _allowlistModels.clear()
-        _supplementaryModels.clear()
-
-        // Load model allowlist json.
-        // Try to read the local test allowlist first.
-        Log.d(TAG, "Loading test model allowlist from ${localTestAllowlistFile.absolutePath}.")
-        var modelAllowlist = readModelAllowlistFromDisk(file = localTestAllowlistFile)
-        val loadedFromTestAllowlist = modelAllowlist != null
-        if (loadedFromTestAllowlist) {
-          Log.w(TAG, "Using local test model allowlist: ${localTestAllowlistFile.absolutePath}")
-        }
-
-        if (modelAllowlist == null) {
-          // Load from github.
-          var version = BuildConfig.VERSION_NAME.replace(".", "_")
-          val url = getAllowlistUrl(version)
-          Log.d(TAG, "Loading model allowlist from internet. Url: $url")
-          val data = getJsonResponse<ModelAllowlist>(url = url)
-          modelAllowlist = data?.jsonObj
-
-          if (modelAllowlist == null) {
-            Log.w(TAG, "Failed to load model allowlist from internet. Trying to load it from disk")
-            modelAllowlist = readModelAllowlistFromDisk()
-          } else {
-            Log.d(TAG, "Done: loading model allowlist from internet")
-            saveModelAllowlistToDisk(modelAllowlistContent = data?.textContent ?: "{}")
-          }
-        }
-
-        if (modelAllowlist == null) {
-          _uiState.update { it.copy(loadingModelAllowlistError = "Failed to load model list") }
-          return@launch
-        }
-
-        Log.d(TAG, "Allowlist: $modelAllowlist")
-
-        val isAICoreAvailable by lazy {
-          Log.d(TAG, "loadModelAllowlist: Checking AICore availability")
-          // Build a fast-lookup set of all supported device models.
-          // This extracts the models from all allowed groups, flattens them into a single stream,
-          // lowercases them for case-insensitive matching, and stores them in a Set.
-          val allowedDeviceModelsSet =
-            modelAllowlist.aicoreRequirements
-              ?.allowedDeviceGroups
-              ?.asSequence()
-              ?.flatMap { it.deviceModels }
-              ?.map { it.lowercase() }
-              ?.toSet()
-          isAICoreSupported(allowedDeviceModelsSet)
-        }
-
-        // Convert models in the allowlist.
-        Log.d(
-          TAG,
-          "loadModelAllowlist: Converting models. Total models: ${modelAllowlist.models.size}",
-        )
-        val curTasks = getActiveCustomTasks().map { it.task }
-        val nameToModel = mutableMapOf<String, Model>()
-        for (allowedModel in modelAllowlist.models) {
-          if (allowedModel.disabled == true) {
-            continue
-          }
-
-          if (allowedModel.runtimeType == RuntimeType.AICORE && !isAICoreAvailable) {
-            continue
-          }
-
-          // Ignore the allowedModel if its accelerator is only npu and this device's soc is not in
-          // its socToModelFiles.
-          val accelerators = allowedModel.defaultConfig?.accelerators ?: ""
-          val acceleratorList = accelerators.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-          if (acceleratorList.size == 1 && acceleratorList[0] == "npu") {
-            val socToModelFiles = allowedModel.socToModelFiles
-            if (socToModelFiles != null && !socToModelFiles.containsKey(SOC)) {
-              Log.d(
-                TAG,
-                "Ignoring model '${allowedModel.name}' because it's NPU-only and not supported on SOC: $SOC",
-              )
-              continue
-            }
-          }
-
-          val model = allowedModel.toModel() ?: continue
-
-          if (model.isSupplementary) {
-            // Skip supplementary models whose runtime has no registered downloader in this build.
-            if (downloaders[model.backendSpec.runtimeType] == null) {
-              continue
-            }
-            _allowlistModels.add(model)
-            _supplementaryModels.add(model)
-            // Supplementary models are not bound to tasks, so skip the task registration below.
-            continue
-          }
-
-          _allowlistModels.add(model)
-          nameToModel.put(model.name, model)
-          for (taskType in allowedModel.taskTypes.orEmpty()) {
-            if (taskType == BuiltInTaskId.LLM_TEST) continue
-            val task = curTasks.find { it.id == taskType }
-            task?.models?.add(model)
-
-            if (task?.id == BuiltInTaskId.LLM_TINY_GARDEN) {
-              val newConfigs = model.configs.toMutableList()
-              newConfigs.add(RESET_CONVERSATION_TURN_COUNT_CONFIG)
-              model.configs = newConfigs
-            }
-          }
-        }
-
-        // Find models from allowlist if a task's `modelNames` field is not empty.
-        Log.d(TAG, "loadModelAllowlist: Processing task modelNames")
-        for (task in curTasks) {
-          if (task.modelNames.isNotEmpty()) {
-            for (modelName in task.modelNames) {
-              val model = nameToModel[modelName]
-              if (model == null) {
-                Log.w(TAG, "Model '$modelName' in task '${task.label}' not found in allowlist.")
-                continue
-              }
-              Log.d(TAG, "Adding model '$modelName' to task '${task.label}' from modelNames.")
-              if (model !in task.models) {
-                task.models.add(model)
-              }
-            }
-          }
-        }
-
-        // Process all tasks.
-        Log.d(TAG, "loadModelAllowlist: Processing tasks")
-        processTasks()
-
-        // Update UI state.
-        Log.d(TAG, "loadModelAllowlist: Updating UI state")
-        _uiState.update {
-          createUiState()
-            .copy(
-              loadingModelAllowlist = false,
-              tasks = curTasks,
-              tasksByCategory = groupTasksByCategory(),
-              showLocalTestAllowlistDialog = loadedFromTestAllowlist,
-            )
-        }
-
-        // Process pending downloads.
-        Log.d(TAG, "loadModelAllowlist: Processing pending downloads")
-        processPendingDownloads()
-
-        // Start auto-downloads for models configured with autoDownloadsOnStartup.
-        Log.d(TAG, "loadModelAllowlist: Starting auto-download models")
-        startAutoDownloadModels()
-        refreshSupplementaryStatuses()
-        Log.d(TAG, "loadModelAllowlist: Done")
-      } catch (e: Exception) {
-        Log.e(TAG, "Failed to load model allowlist", e)
+    // This app flow is cloud-only: no downloaded, imported, or device-provided model is selectable.
+    _allowlistModels.clear()
+    _supplementaryModels.clear()
+    val activeTasks = getActiveCustomTasks().map { it.task }
+    activeTasks.forEach { task ->
+      task.models.clear()
+      if (task.id == BuiltInTaskId.LLM_AGENT_CHAT) {
+        task.models.add(CLOUD_AGENT_MODEL)
       }
+    }
+    val cloudStatus =
+      ModelDownloadStatus(
+        status = ModelDownloadStatusType.SUCCEEDED,
+        receivedBytes = 0L,
+        totalBytes = 0L,
+      )
+    _uiState.update { current ->
+      current.copy(
+        tasks = activeTasks,
+        tasksByCategory = groupTasksByCategory(),
+        modelDownloadStatus = mapOf(CLOUD_AGENT_MODEL.name to cloudStatus),
+        loadingModelAllowlist = false,
+        loadingModelAllowlistError = "",
+        showLocalTestAllowlistDialog = false,
+        selectedModel = CLOUD_AGENT_MODEL,
+        extraDataDownloadStatus = emptyMap(),
+        supplementaryModels = emptyList(),
+      )
     }
   }
 
@@ -1580,30 +1398,7 @@ constructor(
           }
     }
 
-    // Load imported models.
-    for (importedModel in dataStoreRepository.readImportedModels()) {
-      Log.d(TAG, "stored imported model: $importedModel")
-
-      // Create model.
-      val model = createModelFromImportedModelInfo(info = importedModel)
-
-      // Add to task.
-      for (taskId in model.getTargetTaskIdsForImportedModel()) {
-        tasks.get(key = taskId)?.models?.add(model)
-      }
-
-      // Update status.
-      if (model.downloadInfo.url.isNotEmpty()) {
-        modelDownloadStatus[model.name] = getModelDownloadStatus(model = model)
-      } else {
-        modelDownloadStatus[model.name] =
-          ModelDownloadStatus(
-            status = ModelDownloadStatusType.SUCCEEDED,
-            receivedBytes = importedModel.fileSize,
-            totalBytes = importedModel.fileSize,
-          )
-      }
-    }
+    // Imported model files remain untouched on disk but are not registered in cloud-only mode.
 
     val textInputHistory = dataStoreRepository.readTextInputHistory()
     Log.d(TAG, "text input history: $textInputHistory")

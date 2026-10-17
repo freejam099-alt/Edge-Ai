@@ -25,20 +25,38 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.EaseOutExpo
+import androidx.compose.animation.fadeIn
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.Button
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -50,12 +68,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -68,7 +90,10 @@ import androidx.navigation.navArgument
 import com.google.ai.edge.gallery.GalleryEvent
 import com.google.ai.edge.gallery.customtasks.common.CustomTaskData
 import com.google.ai.edge.gallery.customtasks.common.CustomTaskDataForBuiltinTask
+import com.google.ai.edge.gallery.customtasks.agentchat.CLOUD_AGENT_MODEL
+import com.google.ai.edge.gallery.data.BuiltInTaskId
 import com.google.ai.edge.gallery.data.Model
+import com.google.ai.edge.gallery.data.ModelDownloadStatus
 import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.data.isLegacyTasks
@@ -79,6 +104,9 @@ import com.google.ai.edge.gallery.ui.common.LocalTestAllowlistDialog
 import com.google.ai.edge.gallery.ui.common.ModelPageAppBar
 import com.google.ai.edge.gallery.ui.common.chat.ModelDownloadStatusInfoPanel
 import com.google.ai.edge.gallery.ui.common.tos.TosViewModel
+import com.google.ai.edge.gallery.ui.common.tos.AppTosDialog
+import com.google.ai.edge.gallery.ui.home.CloudProviderSettingsDialog
+import com.google.ai.edge.gallery.ui.home.loadCloudProviderConfig
 import com.google.ai.edge.gallery.ui.home.HomeScreen
 import com.google.ai.edge.gallery.ui.modelmanager.GlobalModelManager
 import com.google.ai.edge.gallery.ui.modelmanager.MODEL_ALLOWLIST_TEST_FILE_PATH
@@ -89,6 +117,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 private const val TAG = "AGGalleryNavGraph"
+private const val ROUTE_AGENT_SKILLS = "agent_skills_home"
 private const val ROUTE_HOMESCREEN = "homepage"
 private const val ROUTE_MODEL_LIST = "model_list"
 private const val ROUTE_MODEL = "route_model"
@@ -96,18 +125,16 @@ private const val ROUTE_BENCHMARK = "benchmark"
 private const val ROUTE_MODEL_MANAGER = "model_manager"
 private const val ARG_IMPORT_URL = "import_url"
 private const val ROUTE_NOTIFICATIONS = "notifications"
-private const val ENTER_ANIMATION_DURATION_MS = 500
-private val ENTER_ANIMATION_EASING = EaseOutExpo
-private const val ENTER_ANIMATION_DELAY_MS = 100
+private const val ENTER_ANIMATION_DURATION_MS = 320
+private val ENTER_ANIMATION_EASING = FastOutSlowInEasing
 
-private const val EXIT_ANIMATION_DURATION_MS = 500
-private val EXIT_ANIMATION_EASING = EaseOutExpo
+private const val EXIT_ANIMATION_DURATION_MS = 280
+private val EXIT_ANIMATION_EASING = FastOutSlowInEasing
 
 private fun enterTween(): FiniteAnimationSpec<IntOffset> {
   return tween(
     ENTER_ANIMATION_DURATION_MS,
     easing = ENTER_ANIMATION_EASING,
-    delayMillis = ENTER_ANIMATION_DELAY_MS,
   )
 }
 
@@ -182,29 +209,20 @@ fun GalleryNavHost(
 
   NavHost(
     navController = navController,
-    startDestination = ROUTE_HOMESCREEN,
+    startDestination = ROUTE_AGENT_SKILLS,
     enterTransition = { EnterTransition.None },
     exitTransition = { ExitTransition.None },
   ) {
-    // Home screen.
-    composable(route = ROUTE_HOMESCREEN) {
-      HomeScreen(
+    composable(route = ROUTE_AGENT_SKILLS) {
+      AgentSkillsMainEntry(
         modelManagerViewModel = modelManagerViewModel,
         tosViewModel = tosViewModel,
-        enableAnimation = enableHomeScreenAnimation,
-        navigateToTaskScreen = { task ->
-          pickedTask = task
-          enableModelListAnimation = true
-          navController.navigate(ROUTE_MODEL_LIST)
-          firebaseAnalytics?.logEvent(
-            GalleryEvent.CAPABILITY_SELECT.id,
-            Bundle().apply { putString("capability_name", task.id) },
-          )
-        },
-        onModelsClicked = { navController.navigate(ROUTE_MODEL_MANAGER) },
-        onNotificationsClicked = { navController.navigate(ROUTE_NOTIFICATIONS) },
-        modifier = modifier,
       )
+    }
+
+    // The legacy homepage route now resolves to the cloud-only Agent Skills entry.
+    composable(route = ROUTE_HOMESCREEN) {
+      AgentSkillsMainEntry(modelManagerViewModel = modelManagerViewModel, tosViewModel = tosViewModel)
     }
 
     // Model list.
@@ -270,6 +288,11 @@ fun GalleryNavHost(
       val queryParam = backStackEntry.arguments?.getString("query")
       val scope = rememberCoroutineScope()
       val context = LocalContext.current
+
+      if (taskId != BuiltInTaskId.LLM_AGENT_CHAT || modelName != CLOUD_AGENT_MODEL.name) {
+        AgentSkillsMainEntry(modelManagerViewModel = modelManagerViewModel, tosViewModel = tosViewModel)
+        return@composable
+      }
 
       modelManagerViewModel.getModelByName(name = modelName)?.let { initialModel ->
         LaunchedEffect(modelName) { modelManagerViewModel.selectModel(initialModel) }
@@ -458,32 +481,33 @@ fun GalleryNavHost(
     intent.data = null
     val uriStr = data.toString()
     Log.d(TAG, "navigation link clicked: $data")
-    // 1. Precise model deep links: com.google.ai.edge.gallery://model/<taskId>/<modelName>
+    // 1. Precise model deep links are restricted to Agent Skills in the simplified UI.
     if (uriStr.startsWith("com.google.ai.edge.gallery://model/")) {
       if (data.pathSegments.size >= 2) {
         val taskId = data.pathSegments.get(data.pathSegments.size - 2)
         val modelName = data.pathSegments.last()
         val queryStr = data.getQueryParameter("query")
-        modelManagerViewModel.getModelByName(name = modelName)?.let { model ->
-          val route =
-            if (!queryStr.isNullOrEmpty()) {
-              "$ROUTE_MODEL/${taskId}/${model.name}?query=${Uri.encode(queryStr)}"
-            } else {
-              "$ROUTE_MODEL/${taskId}/${model.name}"
-            }
-          navController.navigate(route)
-        }
+        modelManagerViewModel
+          .getModelByName(name = modelName)
+          ?.takeIf { taskId == BuiltInTaskId.LLM_AGENT_CHAT }
+          ?.let { model ->
+            val route =
+              if (!queryStr.isNullOrEmpty()) {
+                "$ROUTE_MODEL/${taskId}/${model.name}?query=${Uri.encode(queryStr)}"
+              } else {
+                "$ROUTE_MODEL/${taskId}/${model.name}"
+              }
+            navController.navigate(route)
+          }
       } else {
         Log.e(TAG, "Malformed deep link URI received: $data")
       }
     } else if (data.host == "global_model_manager" || data.host == "import") {
-      val route =
-          ROUTE_MODEL_MANAGER
-      navController.navigate(route)
+      Log.w(TAG, "Ignoring model manager deep link in the simplified Agent Skills UI: $data")
     } else {
       // 2. Dynamic task-level deep links: com.google.ai.edge.gallery://<taskId>
       val host = data.host
-      if (host != null) {
+      if (host == BuiltInTaskId.LLM_AGENT_CHAT) {
         val queryStr = data.getQueryParameter("query")
         val task = modelManagerUiState.tasks.find { it.id == host }
         if (task != null) {
@@ -512,6 +536,177 @@ fun GalleryNavHost(
 }
 
 @Composable
+private fun AgentSkillsMainEntry(
+  modelManagerViewModel: ModelManagerViewModel,
+  tosViewModel: TosViewModel,
+) {
+  val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
+  val context = LocalContext.current
+  val agentChatTask =
+    modelManagerViewModel.getCustomTaskByTaskId(BuiltInTaskId.LLM_AGENT_CHAT)
+  val task = agentChatTask?.task
+  val selectedModel = task?.let { CLOUD_AGENT_MODEL }
+  val cloudConfigured =
+    loadCloudProviderConfig(context, modelManagerViewModel.dataStoreRepository).isConfigured
+  var showTosDialog by remember { mutableStateOf(!tosViewModel.getIsTosAccepted()) }
+  var showCloudSettings by remember { mutableStateOf(false) }
+
+  LaunchedEffect(task) {
+    if (task != null) {
+      task.models.removeAll { it.name != CLOUD_AGENT_MODEL.name }
+      if (task.models.none { it.name == CLOUD_AGENT_MODEL.name }) {
+        task.models.add(CLOUD_AGENT_MODEL)
+      }
+      modelManagerViewModel.setDownloadStatus(
+        CLOUD_AGENT_MODEL,
+        ModelDownloadStatus(status = ModelDownloadStatusType.SUCCEEDED),
+      )
+      modelManagerViewModel.selectModel(CLOUD_AGENT_MODEL)
+    }
+  }
+
+  when {
+    showTosDialog -> {
+      AgentSkillsEntryState(
+        message = "Review the app terms to continue.",
+        onRetry = null,
+        onCloudSettingsClicked = { showCloudSettings = true },
+      )
+    }
+    task == null || selectedModel == null -> {
+      AgentSkillsEntryState(
+        message = "Agent Skills could not be prepared on this device.",
+        onRetry = { modelManagerViewModel.loadModelAllowlist() },
+        onCloudSettingsClicked = { showCloudSettings = true },
+      )
+    }
+    !cloudConfigured -> {
+      AgentSkillsEntryState(
+        message = "Connect a cloud provider and save its API key to start chatting.",
+        onRetry = null,
+        onCloudSettingsClicked = { showCloudSettings = true },
+      )
+    }
+    else -> {
+      LaunchedEffect(selectedModel.name) { modelManagerViewModel.selectModel(selectedModel) }
+      CustomTaskScreen(
+        task = task,
+        initialModel = selectedModel,
+        modelManagerViewModel = modelManagerViewModel,
+        disableAppBarControls = false,
+        hideTopBar = false,
+        useThemeColor = task.useThemeColor,
+        onNavigateUp = {},
+        showBackButton = false,
+        handleSystemBack = false,
+        showCloudSettingsButton = true,
+        onCloudSettingsClicked = { showCloudSettings = true },
+      ) { _ ->
+        agentChatTask?.MainScreen(
+          data =
+            CustomTaskDataForBuiltinTask(
+              modelManagerViewModel = modelManagerViewModel,
+              onNavUp = {},
+              initialQuery = null,
+            )
+        )
+      }
+    }
+  }
+
+  if (showCloudSettings) {
+    CloudProviderSettingsDialog(
+      dataStoreRepository = modelManagerViewModel.dataStoreRepository,
+      onDismiss = { showCloudSettings = false },
+      onSaved = { modelManagerViewModel.selectModel(CLOUD_AGENT_MODEL) },
+    )
+  }
+
+  if (showTosDialog) {
+    AppTosDialog(
+      onTosAccepted = {
+        showTosDialog = false
+        tosViewModel.acceptTos()
+      }
+    )
+  }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AgentSkillsEntryState(
+  message: String,
+  onRetry: (() -> Unit)?,
+  onCloudSettingsClicked: () -> Unit,
+  loading: Boolean = false,
+) {
+  val pulseTransition = rememberInfiniteTransition(label = "cloud-entry-pulse")
+  val iconScale by
+    pulseTransition.animateFloat(
+      initialValue = 0.97f,
+      targetValue = 1.035f,
+      animationSpec = infiniteRepeatable(tween(1_900), repeatMode = RepeatMode.Reverse),
+      label = "cloud-entry-scale",
+    )
+  Scaffold(
+    topBar = {
+      CenterAlignedTopAppBar(
+        title = {
+          androidx.compose.foundation.layout.Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            Icon(
+              painter = painterResource(R.drawable.cloud_sparkle),
+              contentDescription = null,
+              tint = MaterialTheme.colorScheme.primary,
+              modifier = Modifier.size(22.dp),
+            )
+            Text("Agent Skills")
+          }
+        },
+        actions = {
+          IconButton(onClick = onCloudSettingsClicked) {
+            Icon(
+              imageVector = Icons.Rounded.Settings,
+              contentDescription = "Cloud provider settings",
+            )
+          }
+        },
+      )
+    }
+  ) { innerPadding ->
+    AnimatedVisibility(
+      visible = true,
+      enter = fadeIn(tween(280)) + slideInVertically(animationSpec = tween(280)) { it / 16 },
+      modifier = Modifier.fillMaxSize(),
+    ) {
+      Column(
+        modifier = Modifier.fillMaxSize().padding(innerPadding).padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+      ) {
+        Icon(
+          painter = painterResource(R.drawable.cloud_sparkle),
+          contentDescription = null,
+          tint = MaterialTheme.colorScheme.primary,
+          modifier = Modifier.size(76.dp).scale(iconScale).padding(bottom = 18.dp),
+        )
+        if (loading) CircularProgressIndicator(modifier = Modifier.padding(bottom = 16.dp))
+        Text(
+          text = message,
+          style = MaterialTheme.typography.bodyLarge,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (onRetry != null) {
+          Button(onClick = onRetry, modifier = Modifier.padding(top = 16.dp)) { Text("Retry") }
+        }
+      }
+    }
+  }
+}
+
+@Composable
 private fun CustomTaskScreen(
   task: Task,
   initialModel: Model,
@@ -525,6 +720,10 @@ private fun CustomTaskScreen(
   defaultSystemPrompt: String = task.defaultSystemPrompt,
   onSystemPromptChanged: (String) -> Unit = {},
   onHistoryClicked: (() -> Unit)? = null,
+  showBackButton: Boolean = true,
+  handleSystemBack: Boolean = true,
+  showCloudSettingsButton: Boolean = false,
+  onCloudSettingsClicked: () -> Unit = {},
   content: @Composable (bottomPadding: Dp) -> Unit,
 ) {
   val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
@@ -550,7 +749,7 @@ private fun CustomTaskScreen(
   }
 
   // Handle system's edge swipe.
-  BackHandler { handleNavigateUp() }
+  BackHandler(enabled = handleSystemBack) { handleNavigateUp() }
 
   // Initialize model when model/download state changes.
   val curDownloadStatus = modelManagerUiState.modelDownloadStatus[selectedModel.name]
@@ -586,6 +785,9 @@ private fun CustomTaskScreen(
           modelPreparing = disableAppBarControls,
           shouldShowHistoryButton = onHistoryClicked != null,
           onHistoryClicked = { onHistoryClicked?.invoke() },
+          showBackButton = showBackButton,
+          showCloudSettingsButton = showCloudSettingsButton,
+          onCloudSettingsClicked = onCloudSettingsClicked,
           useThemeColor = useThemeColor,
           modifier =
             Modifier.onGloballyPositioned { coordinates -> appBarHeight = coordinates.size.height },

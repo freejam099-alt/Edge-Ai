@@ -218,6 +218,19 @@ open class LlmChatViewModelBase(
       val metadata =
         buildMap<String, Any> {
           put(AgentRequest.SESSION_ID, currentSessionId)
+          put(
+            AgentRequest.CLOUD_HISTORY,
+            uiState.value.messagesByModel[model.name]
+              .orEmpty()
+              .filterIsInstance<ChatMessageText>()
+              .dropLast(1)
+              .map { message ->
+                mapOf(
+                  "role" to if (message.side == ChatSide.USER) "user" else "assistant",
+                  "content" to message.content,
+                )
+              },
+          )
           if (extraContext.isNotEmpty()) {
             put(AgentRequest.LITERTLM_EXTRA_CONTEXT, extraContext)
           }

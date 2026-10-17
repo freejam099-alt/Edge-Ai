@@ -1,0 +1,19 @@
+<!--
+ Copyright 2026 Google LLC
+ Licensed under the Apache License, Version 2.0.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+  <path
+      android:fillColor="#FF000000"
+      android:pathData="M18.5,18.2H6.3a4.3,4.3 0,0 1,-0.55 -8.56,7.05 7.05,0 0,1 13.37,-1.08,4.85 4.85,0 0,1 -0.62,9.64z" />
+  <path
+      android:fillColor="#FF000000"
+      android:pathData="M19.7,2.1l0.64,1.82 1.82,0.64 -1.82,0.64 -0.64,1.82 -0.64,-1.82 -1.82,-0.64 1.82,-0.64z" />
+  <path
+      android:fillColor="#FF000000"
+      android:pathData="M4.15,2.9l0.42,1.18 1.18,0.42 -1.18,0.42 -0.42,1.18 -0.42,-1.18 -1.18,-0.42 1.18,-0.42z" />
+</vector>

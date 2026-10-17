@@ -25,20 +25,21 @@ import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.agent.AgentChatExecutor
 import com.google.ai.edge.gallery.agent.AgentRuntimeConfig
 import com.google.ai.edge.gallery.agent.AgentRuntimeExecutor
-import com.google.ai.edge.gallery.agent.DefaultAgentRuntimeExecutor
 import com.google.ai.edge.gallery.agent.PromptExpander
 import com.google.ai.edge.gallery.agent.sessions.LlmSessionManager
 import com.google.ai.edge.gallery.customtasks.common.CustomTask
 import com.google.ai.edge.gallery.customtasks.common.CustomTaskDataForBuiltinTask
 import com.google.ai.edge.gallery.data.BuiltInTaskId
+import com.google.ai.edge.gallery.data.BackendSpec
 import com.google.ai.edge.gallery.data.Category
+import com.google.ai.edge.gallery.data.LlmProfile
 import com.google.ai.edge.gallery.data.Model
+import com.google.ai.edge.gallery.data.ModelDownloadInfo
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.proto.McpServers
 import com.google.ai.edge.gallery.skills.SkillManager
 import com.google.ai.edge.gallery.skills.SkillsProvider
 import com.google.ai.edge.gallery.skills.formatSelectedSkills
-import com.google.ai.edge.gallery.tools.RuntimeToolDispatcher
 import com.google.ai.edge.litertlm.Contents
 import dagger.Module
 import dagger.Provides
@@ -77,9 +78,9 @@ const val DEFAULT_SYSTEM_PROMPT =
   FLOW A: SKILL EXECUTION
   ==================================================
 
-  2. Find the most relevant skill from the --- SKILLS --- list. You MUST NOT use `run_intent` or `runMcpTool` under any circumstances at this step.
+  2. Find the most relevant skill from the --- SKILLS --- list. You MUST NOT use `runIntent` or `runMcpTool` under any circumstances at this step.
 
-  3. Use the `load_skill` tool to read its instructions. Follow the skill's instructions exactly to complete the task.
+  3. Use the `loadSkill` tool to read its instructions. Follow the skill's instructions exactly to complete the task.
      - You MUST NOT output any intermediate thoughts or status updates. No exceptions!
      - Output ONLY the final result when successful. It should contain a one-sentence summary of the action taken and the final result of the skill.
      - Stop here once Flow A is complete.
@@ -110,9 +111,9 @@ const val DEFAULT_SYSTEM_PROMPT_SKILLS_ONLY =
 
   ___SKILLS___
 
-  After this step you MUST go to next step. You MUST NOT use `run_intent` under any circumstances at this step.
+  After this step you MUST go to next step. You MUST NOT use `runIntent` under any circumstances at this step.
 
-  2. If a relevant skill exists, use the `load_skill` tool to read its instructions. You MUST NOT use `run_intent` under any circumstances at this step.
+  2. If a relevant skill exists, use the `loadSkill` tool to read its instructions. You MUST NOT use `runIntent` under any circumstances at this step.
 
   3. Follow the skill's instructions exactly to complete the task. You MUST NOT output any intermediate thoughts or status updates. No exceptions! Output ONLY the final result when successful. It should contain one-sentence summary of the action taken, and the final result of the skill.
 
@@ -120,6 +121,26 @@ const val DEFAULT_SYSTEM_PROMPT_SKILLS_ONLY =
   """
 
 val DEFAULT_SYSTEM_PROMPT_SKILLS_ONLY_TRIMMED = DEFAULT_SYSTEM_PROMPT_SKILLS_ONLY.trimIndent()
+
+/** A UI/session identity for the cloud provider; it has no downloadable local model file. */
+val CLOUD_AGENT_MODEL =
+  Model(
+    name = "cloud-agent-skills",
+    displayName = "Cloud model",
+    info = "Uses the cloud provider selected in Agent Skills settings.",
+    downloadInfo =
+      ModelDownloadInfo(
+        downloadFileName = "cloud-provider",
+        version = "cloud",
+        localRelativeDirPathOverride = "cloud-provider/",
+      ),
+    backendSpec = BackendSpec(),
+    llmProfile = LlmProfile(),
+    supportImage = true,
+    supportAudio = false,
+  )
+
+private object CloudAgentModelMarker
 
 class AgentChatTask
 @Inject
@@ -134,9 +155,9 @@ constructor(
       id = BuiltInTaskId.LLM_AGENT_CHAT,
       label = context.getString(R.string.task_label_agent_skills),
       category = Category.LLM,
-      iconVectorResourceId = R.drawable.agent,
+  iconVectorResourceId = R.drawable.cloud_sparkle,
       newFeature = true,
-      models = mutableListOf(),
+      models = mutableListOf(CLOUD_AGENT_MODEL),
       description = context.getString(R.string.task_desc_agent_skills),
       shortDescription = context.getString(R.string.task_short_desc_agent_skills),
       docUrl = "https://github.com/google-ai-edge/LiteRT-LM/blob/main/kotlin/README.md",
@@ -145,7 +166,7 @@ constructor(
       textInputPlaceHolderRes = R.string.text_input_placeholder_llm_chat,
       defaultSystemPrompt = DEFAULT_SYSTEM_PROMPT_TRIMMED,
       supportImage = true,
-      supportAudio = true,
+      supportAudio = false,
       supportContextCompact = true,
     )
   }
@@ -194,7 +215,10 @@ constructor(
           systemInstruction = finalSystemPrompt,
         )
 
-      executor.initialize(context = context, config = config, onDone = onDone)
+      executor.initialize(context = context, config = config) { error ->
+        if (error.isEmpty()) model.instance = CloudAgentModelMarker
+        onDone(error)
+      }
     }
   }
 
@@ -233,15 +257,16 @@ internal object AgentChatTaskModule {
   @Singleton
   @AgentChatExecutor
   fun provideAgentChatExecutor(
-    skillManager: SkillManager,
+    @ApplicationContext context: Context,
+    dataStoreRepository: com.google.ai.edge.gallery.data.DataStoreRepository,
     agentTools: AgentTools,
     llmSessionManager: LlmSessionManager,
   ): AgentRuntimeExecutor {
-    return DefaultAgentRuntimeExecutor(
-      skillsProvider = skillManager,
-      toolsProvider = agentTools,
-      toolDispatcher = RuntimeToolDispatcher(),
+    return CloudAgentRuntimeExecutor(
+      appContext = context,
+      dataStoreRepository = dataStoreRepository,
       llmSessionManager = llmSessionManager,
+      agentTools = agentTools,
     )
   }
 

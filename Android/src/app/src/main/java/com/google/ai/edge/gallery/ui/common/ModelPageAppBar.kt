@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -92,6 +93,9 @@ fun ModelPageAppBar(
   shouldShowHistoryButton: Boolean = false,
   onHistoryClicked: (Model) -> Unit = {},
   isAutoCompactEnabled: Boolean = false,
+  showBackButton: Boolean = true,
+  showCloudSettingsButton: Boolean = false,
+  onCloudSettingsClicked: () -> Unit = {},
 ) {
   var showConfigDialog by remember { mutableStateOf(false) }
   val modelManagerUiState by modelManagerViewModel.uiState.collectAsStateWithLifecycle()
@@ -137,17 +141,31 @@ fun ModelPageAppBar(
     },
     modifier = modifier,
     // The back button.
-    navigationIcon = {
-      val enableBackButton = !isModelInitializing && !inProgress
-      IconButton(onClick = onBackClicked, enabled = enableBackButton) {
-        Icon(
-          imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-          contentDescription = stringResource(R.string.cd_navigate_back_icon),
-        )
-      }
-    },
+    navigationIcon =
+      if (showBackButton) {
+        {
+          val enableBackButton = !isModelInitializing && !inProgress
+          IconButton(onClick = onBackClicked, enabled = enableBackButton) {
+            Icon(
+              imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+              contentDescription = stringResource(R.string.cd_navigate_back_icon),
+            )
+          }
+        }
+      } else {
+        {}
+      },
     // The config button for the model (if existed).
     actions = {
+      if (showCloudSettingsButton) {
+        IconButton(onClick = onCloudSettingsClicked, enabled = !inProgress) {
+          Icon(
+            imageVector = Icons.Rounded.Settings,
+            contentDescription = "Cloud provider settings",
+            tint = MaterialTheme.colorScheme.onSurface,
+          )
+        }
+      }
       val downloadSucceeded = curDownloadStatus?.status == ModelDownloadStatusType.SUCCEEDED
       val showConfigButton = model.configs.isNotEmpty() && downloadSucceeded
       Box(modifier = Modifier.size(42.dp), contentAlignment = Alignment.Center) {

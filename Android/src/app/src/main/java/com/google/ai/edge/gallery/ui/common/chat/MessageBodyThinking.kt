@@ -45,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.ui.common.MarkdownText
+import com.google.ai.edge.gallery.ui.common.ThinkingOrb
 
 @Composable
 fun MessageBodyThinking(
@@ -70,6 +71,7 @@ fun MessageBodyThinking(
         style = MaterialTheme.typography.bodyMedium,
         fontWeight = FontWeight.Medium,
       )
+      ThinkingOrb(size = 18.dp, active = inProgress)
       Icon(
         imageVector = if (isExpanded) Icons.Filled.ArrowDropUp else Icons.Filled.ArrowDropDown,
         contentDescription = if (isExpanded) "Hide thinking" else "Show thinking",

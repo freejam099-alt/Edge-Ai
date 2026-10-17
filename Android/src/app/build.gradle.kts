@@ -51,9 +51,21 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
+  // Produce device-specific APKs instead of one universal APK containing
+  // native libraries for every supported CPU architecture.
+  splits {
+    abi {
+      isEnable = true
+      reset()
+      include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+      isUniversalApk = false
+    }
+  }
+
   buildTypes {
     release {
-      isMinifyEnabled = false
+      isMinifyEnabled = true
+      isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("debug")
     }
@@ -66,7 +78,11 @@ android {
     compose = true
     buildConfig = true
   }
-  packaging { jniLibs { pickFirsts.add("**/liblitertlm_jni.so") } }
+  packaging {
+    jniLibs {
+      pickFirsts.add("**/liblitertlm_jni.so")
+    }
+  }
 }
 
 kotlin {

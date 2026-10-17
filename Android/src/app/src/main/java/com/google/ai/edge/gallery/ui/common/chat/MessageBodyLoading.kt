@@ -43,7 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
-import com.google.ai.edge.gallery.ui.common.RotationalLoader
+import com.google.ai.edge.gallery.ui.common.ThinkingOrb
 
 /** Composable function to display a loading indicator. */
 @Composable
@@ -68,7 +68,17 @@ fun MessageBodyLoading(message: ChatMessageLoading? = null) {
     verticalAlignment = Alignment.CenterVertically,
     modifier = Modifier.fillMaxWidth(),
   ) {
-    RotationalLoader(size = 24.dp)
+    Row(
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      ThinkingOrb(size = 30.dp)
+      Text(
+        "Thinking…",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
 
     if (message?.extraProgressLabel?.isNotEmpty() == true) {
       AnimatedContent(
