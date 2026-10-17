@@ -10,3 +10,9 @@
 # These classes are loaded from literal class names for notifications and workers.
 -keepnames class com.google.ai.edge.gallery.MainActivity
 -keepnames class com.google.ai.edge.gallery.notifications.NotificationReceiver
+
+# Protobuf Lite builds schemas by reflecting on generated field-name strings.
+# Keep those fields (not every class/method): Settings is read before the first UI.
+-keepclassmembers class * extends com.google.protobuf.GeneratedMessageLite {
+    <fields>;
+}

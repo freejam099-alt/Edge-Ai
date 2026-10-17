@@ -31,6 +31,8 @@ jobs:
         run: echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-37.0"
       - name: Build release APK
         run: ./gradlew assembleRelease
+      - name: Verify Protobuf release reflection fields
+        run: python3 scripts/check_protobuf_release.py
       - name: Verify ARM64 APK size target
         shell: bash
         run: |
