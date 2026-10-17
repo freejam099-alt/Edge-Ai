@@ -81,6 +81,8 @@ android {
   packaging {
     jniLibs {
       pickFirsts.add("**/liblitertlm_jni.so")
+      // Compress native libraries in the APK; Android extracts them at install time.
+      useLegacyPackaging = true
     }
   }
 }
