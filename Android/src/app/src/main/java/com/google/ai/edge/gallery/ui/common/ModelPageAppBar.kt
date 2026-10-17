@@ -41,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -118,7 +119,8 @@ fun ModelPageAppBar(
           horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
           val tintColor =
-            if (useThemeColor && !isCloudAgent) MaterialTheme.colorScheme.onSurface
+            if (isCloudAgent) Color(0xFFC8A53A)
+            else if (useThemeColor) MaterialTheme.colorScheme.onSurface
             else getTaskIconColor(task = task)
           val icon = task.icon ?: task.iconVectorResourceId?.let { ImageVector.vectorResource(it) }
           if (icon != null) {

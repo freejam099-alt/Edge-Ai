@@ -68,6 +68,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -582,7 +583,7 @@ private fun AgentSkillsEntryState(
             Icon(
               painter = painterResource(R.drawable.agent),
               contentDescription = null,
-              tint = com.google.ai.edge.gallery.ui.common.getTaskIconColor(0),
+              tint = Color(0xFFC8A53A),
               modifier = Modifier.size(22.dp),
             )
             Text("Agent Skills")
@@ -612,7 +613,7 @@ private fun AgentSkillsEntryState(
         Icon(
           painter = painterResource(R.drawable.agent),
           contentDescription = null,
-          tint = com.google.ai.edge.gallery.ui.common.getTaskIconColor(0),
+          tint = Color(0xFFC8A53A),
           modifier = Modifier.size(76.dp).scale(iconScale).padding(bottom = 18.dp),
         )
         if (loading) CircularProgressIndicator(modifier = Modifier.padding(bottom = 16.dp))

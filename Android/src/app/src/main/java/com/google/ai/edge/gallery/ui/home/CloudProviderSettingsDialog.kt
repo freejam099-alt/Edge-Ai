@@ -50,6 +50,7 @@ import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material3.Card
+import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -64,6 +65,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,6 +78,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.google.ai.edge.gallery.data.DataStoreRepository
+import kotlinx.coroutines.launch
 
 private data class CloudProviderOption(
   val id: String,
@@ -86,25 +89,28 @@ private data class CloudProviderOption(
   val detail: String,
 )
 
-private val cloudProviderOptions =
-  listOf(
-    CloudProviderOption(
-      id = CLOUD_PROVIDER_GEMINI,
-      label = "Google Gemini API",
-      defaultEndpoint = defaultCloudEndpoint(CLOUD_PROVIDER_GEMINI),
-      defaultTextModel = defaultCloudTextModel(CLOUD_PROVIDER_GEMINI),
-      defaultImageModel = defaultCloudImageModel(CLOUD_PROVIDER_GEMINI),
-      detail = "Gemini models with image input",
-    ),
-    CloudProviderOption(
-      id = CLOUD_PROVIDER_OPENAI_COMPATIBLE,
-      label = "OpenAI-compatible",
-      defaultEndpoint = defaultCloudEndpoint(CLOUD_PROVIDER_OPENAI_COMPATIBLE),
-      defaultTextModel = defaultCloudTextModel(CLOUD_PROVIDER_OPENAI_COMPATIBLE),
-      defaultImageModel = defaultCloudImageModel(CLOUD_PROVIDER_OPENAI_COMPATIBLE),
-      detail = "OpenAI API or a compatible endpoint",
-    ),
-  )
+private val cloudProviderOptions = listOf(
+  CLOUD_PROVIDER_GEMINI to "Google Gemini API",
+  CLOUD_PROVIDER_OPENAI_COMPATIBLE to "OpenAI",
+  CLOUD_PROVIDER_OPENROUTER to "OpenRouter",
+  CLOUD_PROVIDER_GROQ to "Groq",
+  CLOUD_PROVIDER_DEEPSEEK to "DeepSeek",
+  CLOUD_PROVIDER_QWEN to "Qwen (DashScope)",
+  CLOUD_PROVIDER_ANTHROPIC to "Anthropic",
+  CLOUD_PROVIDER_CUSTOM to "Custom endpoint",
+).map { (id, label) ->
+  CloudProviderOption(id, label, defaultCloudEndpoint(id), defaultCloudTextModel(id),
+    defaultCloudImageModel(id), when (id) {
+      CLOUD_PROVIDER_GEMINI -> "Gemini API; image-capable models may be available"
+      CLOUD_PROVIDER_OPENROUTER -> "OpenAI-compatible API; catalog is fetched live"
+      CLOUD_PROVIDER_GROQ -> "OpenAI-compatible API; catalog is fetched live"
+      CLOUD_PROVIDER_DEEPSEEK -> "OpenAI-compatible API; catalog is fetched live"
+      CLOUD_PROVIDER_QWEN -> "OpenAI-compatible API; enter model ID manually if catalog is unavailable"
+      CLOUD_PROVIDER_ANTHROPIC -> "Anthropic Messages API"
+      CLOUD_PROVIDER_CUSTOM -> "Choose an OpenAI-compatible, Gemini, or Anthropic API"
+      else -> "OpenAI-compatible API"
+    })
+}
 
 /** Full-screen cloud provider configuration. Name retained for call-site compatibility. */
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
@@ -116,12 +122,14 @@ fun CloudProviderSettingsDialog(
 ) {
   val context = LocalContext.current
   val savedProviderId = remember { dataStoreRepository.readSecret(CLOUD_PROVIDER_KEY) }
+  val persistedEndpoint = remember { dataStoreRepository.readSecret(CLOUD_ENDPOINT_KEY) ?: defaultCloudEndpoint(savedProviderId ?: CLOUD_PROVIDER_GEMINI) }
+  remember { CloudApiKeyVault.bindLegacyKey(context, savedProviderId ?: CLOUD_PROVIDER_GEMINI, persistedEndpoint) }
   val initialProvider =
     cloudProviderOptions.firstOrNull { it.id == savedProviderId } ?: cloudProviderOptions.first()
   var providerId by remember { mutableStateOf(initialProvider.id) }
   var endpoint by remember {
     mutableStateOf(
-      dataStoreRepository.readSecret(CLOUD_ENDPOINT_KEY) ?: initialProvider.defaultEndpoint
+      persistedEndpoint
     )
   }
   var textModel by remember {
@@ -138,11 +146,17 @@ fun CloudProviderSettingsDialog(
     mutableStateOf(dataStoreRepository.readSecret(CLOUD_THINKING_EFFORT_KEY) ?: CLOUD_THINKING_DEFAULT)
   }
   var apiKey by remember { mutableStateOf("") }
-  var hasSavedApiKey by remember { mutableStateOf(CloudApiKeyVault.hasSavedKey(context)) }
   var removeSavedApiKey by remember { mutableStateOf(false) }
   var saveError by remember { mutableStateOf<String?>(null) }
+  var protocol by remember { mutableStateOf(dataStoreRepository.readSecret(CLOUD_PROTOCOL_KEY) ?: defaultCloudProtocol(initialProvider.id)) }
+  var fetchingModels by remember { mutableStateOf(false) }
+  var fetchedModels by remember { mutableStateOf(emptyList<CloudModel>()) }
+  var fetchError by remember { mutableStateOf<String?>(null) }
+  var fetchNotice by remember { mutableStateOf<String?>(null) }
+  val coroutineScope = rememberCoroutineScope()
   val selectedProvider = cloudProviderOptions.first { it.id == providerId }
-  val canSave = endpoint.isNotBlank() && textModel.isNotBlank() && imageModel.isNotBlank()
+  val hasMatchingSavedKey = CloudApiKeyVault.hasSavedKeyFor(context, providerId, endpoint)
+  val canSave = endpoint.isNotBlank() && textModel.isNotBlank()
 
   BackHandler(onBack = onDismiss)
 
@@ -162,7 +176,7 @@ fun CloudProviderSettingsDialog(
             enabled = canSave,
             onClick = {
               val hasKeyAfterSave =
-                removeSavedApiKey || apiKey.isNotBlank() || (hasSavedApiKey && !removeSavedApiKey)
+                removeSavedApiKey || apiKey.isNotBlank() || (hasMatchingSavedKey && !removeSavedApiKey)
               if (!hasKeyAfterSave) {
                 saveError = "Enter an API key to use a cloud model."
                 return@TextButton
@@ -174,14 +188,13 @@ fun CloudProviderSettingsDialog(
                 dataStoreRepository.saveSecret(CLOUD_TEXT_MODEL_KEY, textModel.trim())
                 dataStoreRepository.saveSecret(CLOUD_IMAGE_MODEL_KEY, imageModel.trim())
                 dataStoreRepository.saveSecret(CLOUD_THINKING_EFFORT_KEY, thinkingEffort)
+                dataStoreRepository.saveSecret(CLOUD_PROTOCOL_KEY, protocol)
                 when {
                   removeSavedApiKey -> {
                     CloudApiKeyVault.remove(context)
-                    hasSavedApiKey = false
                   }
                   apiKey.isNotBlank() -> {
-                    CloudApiKeyVault.save(context, apiKey.trim())
-                    hasSavedApiKey = true
+                    CloudApiKeyVault.save(context, apiKey.trim(), providerId, endpoint.trim())
                     apiKey = ""
                   }
                 }
@@ -229,12 +242,19 @@ fun CloudProviderSettingsDialog(
                 label = "provider-card-color",
               )
             val chooseProvider = {
-              val oldProvider = selectedProvider
-              providerId = option.id
-              if (endpoint == oldProvider.defaultEndpoint) endpoint = option.defaultEndpoint
-              if (textModel == oldProvider.defaultTextModel) textModel = option.defaultTextModel
-              if (imageModel == oldProvider.defaultImageModel) imageModel = option.defaultImageModel
-              saveError = null
+              if (providerId != option.id) {
+                providerId = option.id
+                endpoint = option.defaultEndpoint
+                textModel = option.defaultTextModel
+                imageModel = option.defaultImageModel
+                protocol = defaultCloudProtocol(option.id)
+                apiKey = ""
+                removeSavedApiKey = false
+                fetchedModels = emptyList()
+                fetchError = null
+                fetchNotice = null
+                saveError = null
+              }
             }
             Card(
               modifier = Modifier.fillMaxWidth().clickable(onClick = chooseProvider),
@@ -260,9 +280,17 @@ fun CloudProviderSettingsDialog(
       }
 
       SettingsSection(title = "Connection", subtitle = "Requests are sent directly to this endpoint.") {
+        if (providerId == CLOUD_PROVIDER_CUSTOM) {
+          Text("API protocol", style = MaterialTheme.typography.titleSmall)
+          FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(CLOUD_PROTOCOL_OPENAI to "OpenAI-compatible", CLOUD_PROTOCOL_GEMINI to "Gemini", CLOUD_PROTOCOL_ANTHROPIC to "Anthropic").forEach { (value, label) ->
+              FilterChip(selected = protocol == value, onClick = { protocol = value; fetchedModels = emptyList(); fetchError = null }, label = { Text(label) })
+            }
+          }
+        }
         OutlinedTextField(
           value = endpoint,
-          onValueChange = { endpoint = it; saveError = null },
+          onValueChange = { endpoint = it; fetchedModels = emptyList(); fetchError = null; fetchNotice = null; saveError = null },
           modifier = Modifier.fillMaxWidth(),
           singleLine = true,
           label = { Text("API base URL") },
@@ -287,8 +315,31 @@ fun CloudProviderSettingsDialog(
             singleLine = true,
             leadingIcon = { Icon(Icons.Rounded.Image, contentDescription = null) },
             label = { Text("Image model ID") },
-            supportingText = { Text("Used only when the assistant calls createImage") },
+            supportingText = { Text("Optional; leave blank when this provider has no image model") },
           )
+          Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Button(enabled = !fetchingModels && endpoint.isNotBlank() && (apiKey.isNotBlank() || hasMatchingSavedKey), onClick = {
+              fetchingModels = true; fetchError = null; fetchNotice = null
+              val key = apiKey.trim().ifBlank { CloudApiKeyVault.read(context, providerId, endpoint).orEmpty() }
+              coroutineScope.launch {
+                try { fetchedModels = fetchCloudModels(providerId, protocol, endpoint, key); fetchNotice = "${fetchedModels.size} models fetched from the provider." }
+                catch (e: CloudModelFetchException) {
+                  fetchError = e.message
+                  if (providerId == CLOUD_PROVIDER_QWEN) fetchNotice = "Qwen model IDs can be entered manually; no static list is shown as fetched."
+                } catch (_: Exception) { fetchError = "Could not fetch models. Check the API settings and try again." }
+                finally { fetchingModels = false }
+              }
+            }) { Text(if (fetchingModels) "Fetching…" else "Fetch models") }
+            Text("Uses the selected endpoint and matching API key only.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+          }
+          if (fetchError != null) Text(fetchError.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+          if (fetchNotice != null) Text(fetchNotice.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+          if (fetchedModels.isNotEmpty()) {
+            Text("Select a fetched text model", style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+              fetchedModels.forEach { model -> FilterChip(selected = textModel == model.id, onClick = { textModel = model.id }, label = { Text(model.id) }) }
+            }
+          }
           Text(
             "Image generation uses the image model above. Video generation is not available here.",
             style = MaterialTheme.typography.bodySmall,
@@ -344,9 +395,9 @@ fun CloudProviderSettingsDialog(
           visualTransformation = PasswordVisualTransformation(),
           leadingIcon = { Icon(Icons.Rounded.Key, contentDescription = null) },
           label = { Text("API key") },
-          placeholder = { Text(if (hasSavedApiKey) "Key saved on this device" else "Enter API key") },
+          placeholder = { Text(if (hasMatchingSavedKey) "Key saved for this provider and origin" else "Enter API key for selected provider") },
         )
-        if (hasSavedApiKey && !removeSavedApiKey) {
+        if (hasMatchingSavedKey && !removeSavedApiKey) {
           TextButton(
             onClick = {
               apiKey = ""

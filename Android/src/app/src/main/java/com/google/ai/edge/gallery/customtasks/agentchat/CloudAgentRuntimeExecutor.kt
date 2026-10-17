@@ -36,7 +36,6 @@ import com.google.ai.edge.gallery.ui.home.CLOUD_THINKING_HIGH
 import com.google.ai.edge.gallery.ui.home.CLOUD_THINKING_LOW
 import com.google.ai.edge.gallery.ui.home.CLOUD_THINKING_MEDIUM
 import com.google.ai.edge.gallery.ui.home.CLOUD_PROVIDER_GEMINI
-import com.google.ai.edge.gallery.ui.home.CLOUD_PROVIDER_OPENAI_COMPATIBLE
 import com.google.ai.edge.gallery.ui.home.CloudProviderConfig
 import com.google.ai.edge.gallery.ui.home.loadCloudProviderConfig
 import com.google.ai.edge.gallery.ui.home.supportsCloudThinkingEffort
@@ -181,12 +180,14 @@ class CloudAgentRuntimeExecutor(
         val history = readHistory(request.metadata[AgentRequest.CLOUD_HISTORY])
         val imageParts = encodeImages(request.attachments)
         withContext(Dispatchers.IO) {
-          when (providerConfig.providerId) {
-            CLOUD_PROVIDER_GEMINI ->
+          when (providerConfig.protocol) {
+            "gemini" ->
               runGemini(providerConfig, config.systemInstruction.orEmpty(), history, request.query, imageParts, requestCancelled, streamAnswer, streamThinking)
-            CLOUD_PROVIDER_OPENAI_COMPATIBLE ->
+            "openai" ->
               runOpenAiCompatible(providerConfig, config.systemInstruction.orEmpty(), history, request.query, imageParts, requestCancelled, streamAnswer, streamThinking)
-            else -> error("Unsupported cloud provider. Choose Gemini or OpenAI-compatible.")
+            "anthropic" ->
+              runAnthropic(providerConfig, config.systemInstruction.orEmpty(), history, request.query, imageParts, requestCancelled, streamAnswer, streamThinking)
+            else -> error("Unsupported API protocol. Choose OpenAI, Gemini, or Anthropic in settings.")
           }
         }
         if (requestCancelled.get()) {
@@ -239,7 +240,7 @@ class CloudAgentRuntimeExecutor(
           .put("stream", true)
       if (
         config.thinkingEffort != CLOUD_THINKING_DEFAULT &&
-          supportsCloudThinkingEffort(config.providerId, config.modelId) &&
+          supportsCloudThinkingEffort(if (config.protocol == "gemini") CLOUD_PROVIDER_GEMINI else config.providerId, config.modelId) &&
           !config.modelId.trim().lowercase().contains("deepseek-r1")
       ) {
         body.put("reasoning_effort", config.thinkingEffort)
@@ -261,6 +262,11 @@ class CloudAgentRuntimeExecutor(
           .put("role", "assistant")
           .put("content", completion.text.ifEmpty { JSONObject.NULL })
           .put("tool_calls", callsArray)
+          .apply {
+            if (completion.reasoning.isNotBlank() && (config.providerId == "deepseek" || config.modelId.contains("deepseek", ignoreCase = true))) {
+              put("reasoning_content", completion.reasoning)
+            }
+          }
       )
       completion.toolCalls.forEach { call ->
         val result = invokeTool(call.name, call.arguments, config)
@@ -273,6 +279,95 @@ class CloudAgentRuntimeExecutor(
       }
     }
     error("The agent reached the maximum number of tool calls for this turn. Try a more focused request.")
+  }
+
+  private fun runAnthropic(
+    config: CloudProviderConfig,
+    systemPrompt: String,
+    history: List<Pair<String, String>>,
+    query: String,
+    images: List<Pair<String, String>>,
+    requestCancelled: AtomicBoolean,
+    streamAnswer: (String) -> Unit,
+    streamThinking: (String) -> Unit,
+  ) {
+    val messages = JSONArray()
+    history.forEach { (role, text) ->
+      if (text.isNotBlank()) messages.put(JSONObject().put("role", role).put("content", text))
+    }
+    val userContent = JSONArray()
+    images.forEach { (mimeType, base64) ->
+      userContent.put(JSONObject().put("type", "image").put("source",
+        JSONObject().put("type", "base64").put("media_type", mimeType).put("data", base64)))
+    }
+    if (query.isNotBlank()) userContent.put(JSONObject().put("type", "text").put("text", query))
+    messages.put(JSONObject().put("role", "user").put("content", userContent))
+    val tools = JSONArray()
+    cloudFunctions.forEach { function ->
+      tools.put(JSONObject().put("name", function.name).put("description", function.description)
+        .put("input_schema", functionSchema(function)))
+    }
+    repeat(MAX_TOOL_ROUNDS) {
+      check(!requestCancelled.get()) { "Request cancelled" }
+      val body = JSONObject().put("model", config.modelId).put("max_tokens", 8192)
+        .put("messages", messages).put("tools", tools).put("stream", true)
+      if (systemPrompt.isNotBlank()) body.put("system", systemPrompt)
+      val content = anthropicRequest(config, body, requestCancelled, streamAnswer, streamThinking)
+      val results = JSONArray()
+      for (index in 0 until content.length()) {
+        val block = content.getJSONObject(index)
+        if (block.optString("type") == "tool_use") {
+          check(!requestCancelled.get()) { "Request cancelled" }
+          val result = invokeTool(block.getString("name"), block.getJSONObject("input").toString(), config)
+          results.put(JSONObject().put("type", "tool_result")
+            .put("tool_use_id", block.getString("id")).put("content", result))
+        }
+      }
+      if (results.length() == 0) return
+      messages.put(JSONObject().put("role", "assistant").put("content", content))
+      messages.put(JSONObject().put("role", "user").put("content", results))
+    }
+    error("The agent reached the maximum number of tool calls for this turn. Try a more focused request.")
+  }
+
+  private fun anthropicRequest(
+    config: CloudProviderConfig,
+    body: JSONObject,
+    requestCancelled: AtomicBoolean,
+    streamAnswer: (String) -> Unit,
+    streamThinking: (String) -> Unit,
+  ): JSONArray {
+    val endpoint = config.endpoint.trim().trimEnd('/')
+    val requestUrl = if (endpoint.endsWith("/messages")) endpoint else "$endpoint/messages"
+    val connection = (URL(requestUrl).openConnection() as HttpURLConnection).apply {
+      requestMethod = "POST"
+      instanceFollowRedirects = false
+      connectTimeout = 20_000
+      readTimeout = 120_000
+      doOutput = true
+      setRequestProperty("Content-Type", "application/json")
+      setRequestProperty("Accept", "text/event-stream")
+      setRequestProperty("x-api-key", config.apiKey)
+      setRequestProperty("anthropic-version", "2023-06-01")
+    }
+    activeConnection.set(connection)
+    try {
+      connection.outputStream.use { it.write(body.toString().toByteArray(StandardCharsets.UTF_8)) }
+      val code = connection.responseCode
+      if (code !in 200..299) throw providerError(connection, code)
+      val accumulator = AnthropicStreamAccumulator()
+      connection.inputStream.bufferedReader(StandardCharsets.UTF_8).use { reader ->
+        readSseDataEvents(reader, requestCancelled) { data ->
+          val chunk = parseSseJson(data)
+          throwIfStreamProviderError(chunk)
+          accumulator.add(chunk, streamAnswer, streamThinking)
+        }
+      }
+      return accumulator.content()
+    } finally {
+      activeConnection.compareAndSet(connection, null)
+      connection.disconnect()
+    }
   }
 
   private fun runGemini(
@@ -310,7 +405,7 @@ class CloudAgentRuntimeExecutor(
       if (systemPrompt.isNotBlank()) {
         body.put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemPrompt))))
       }
-      val supportsThinking = supportsCloudThinkingEffort(config.providerId, config.modelId)
+      val supportsThinking = supportsCloudThinkingEffort(if (config.protocol == "gemini") CLOUD_PROVIDER_GEMINI else config.providerId, config.modelId)
       if (supportsThinking || config.thinkingEffort != CLOUD_THINKING_DEFAULT) {
         val thinkingConfig = JSONObject()
         // includeThoughts requests the provider's explicitly marked thought summary, not hidden
@@ -362,6 +457,7 @@ class CloudAgentRuntimeExecutor(
     val requestUrl = if (endpoint.endsWith(OPENAI_CHAT_PATH)) endpoint else "$endpoint$OPENAI_CHAT_PATH"
     val connection = (URL(requestUrl).openConnection() as HttpURLConnection).apply {
       requestMethod = "POST"
+      instanceFollowRedirects = false
       connectTimeout = 20_000
       readTimeout = 120_000
       doOutput = true
@@ -376,6 +472,7 @@ class CloudAgentRuntimeExecutor(
       if (code !in 200..299) throw providerError(connection, code)
       val toolCalls = TreeMap<Int, MutableOpenAiToolCall>()
       val responseText = StringBuilder()
+      val responseReasoning = StringBuilder()
       BufferedReader(InputStreamReader(connection.inputStream, StandardCharsets.UTF_8)).use { reader ->
         readSseDataEvents(reader, requestCancelled) { data ->
           if (data == "[DONE]") return@readSseDataEvents
@@ -389,7 +486,10 @@ class CloudAgentRuntimeExecutor(
           // Compatible providers expose reasoning only when they choose to include it. Never
           // derive this field from ordinary response text.
           listOf("reasoning_content", "reasoning").forEach { key ->
-            delta.optString(key).takeIf { it.isNotEmpty() }?.let(streamThinking)
+            delta.optString(key).takeIf { it.isNotEmpty() }?.let { thought ->
+              if (key == "reasoning_content") responseReasoning.append(thought)
+              streamThinking(thought)
+            }
           }
           val deltas = delta.optJSONArray("tool_calls") ?: return@readSseDataEvents
           for (i in 0 until deltas.length()) {
@@ -405,6 +505,7 @@ class CloudAgentRuntimeExecutor(
       }
       return OpenAiCompletion(
         text = responseText.toString(),
+        reasoning = responseReasoning.toString(),
         toolCalls = toolCalls.values.map { call ->
           CloudToolCall(
             id = call.id.ifBlank { "call_${System.nanoTime()}" },
@@ -431,6 +532,7 @@ class CloudAgentRuntimeExecutor(
     val requestUrl = "$endpoint/models/$model:streamGenerateContent?alt=sse"
     val connection = (URL(requestUrl).openConnection() as HttpURLConnection).apply {
       requestMethod = "POST"
+      instanceFollowRedirects = false
       connectTimeout = 20_000
       readTimeout = 120_000
       doOutput = true
@@ -481,6 +583,7 @@ class CloudAgentRuntimeExecutor(
     val requestUrl = "$endpoint/models/$model:generateContent"
     val connection = (URL(requestUrl).openConnection() as HttpURLConnection).apply {
       requestMethod = "POST"
+      instanceFollowRedirects = false
       connectTimeout = 20_000
       readTimeout = 120_000
       doOutput = true
@@ -504,9 +607,9 @@ class CloudAgentRuntimeExecutor(
     require(prompt.isNotBlank()) { "The image prompt cannot be empty." }
     require(config.isImageModelConfigured) { "Add an image model ID in Cloud model settings first." }
     val base64 =
-      when (config.providerId) {
-        CLOUD_PROVIDER_GEMINI -> generateGeminiImage(config.copy(modelId = config.imageModelId), prompt)
-        CLOUD_PROVIDER_OPENAI_COMPATIBLE -> generateOpenAiImage(config, prompt)
+      when (config.protocol) {
+        "gemini" -> generateGeminiImage(config.copy(modelId = config.imageModelId), prompt)
+        "openai" -> generateOpenAiImage(config, prompt)
         else -> error("Image generation is not supported by this provider.")
       }
     agentTools.resultImageToShow = CallJsSkillResultImage(base64 = base64)
@@ -552,6 +655,7 @@ class CloudAgentRuntimeExecutor(
       else "$endpoint$OPENAI_IMAGES_PATH"
     val connection = (URL(requestUrl).openConnection() as HttpURLConnection).apply {
       requestMethod = "POST"
+      instanceFollowRedirects = false
       connectTimeout = 20_000
       readTimeout = 180_000
       doOutput = true
@@ -796,7 +900,7 @@ class CloudAgentRuntimeExecutor(
 }
 
 private data class CloudToolCall(val id: String, val name: String, val arguments: String)
-private data class OpenAiCompletion(val text: String, val toolCalls: List<CloudToolCall>)
+private data class OpenAiCompletion(val text: String, val toolCalls: List<CloudToolCall>, val reasoning: String = "")
 private class MutableOpenAiToolCall {
   var id: String = ""
   val name = StringBuilder()
