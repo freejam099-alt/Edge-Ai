@@ -51,13 +51,12 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
-  // Produce device-specific APKs instead of one universal APK containing
-  // native libraries for every supported CPU architecture.
+  // Produce only the ARM64 APK; never create a universal APK.
   splits {
     abi {
       isEnable = true
       reset()
-      include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+      include("arm64-v8a")
       isUniversalApk = false
     }
   }
