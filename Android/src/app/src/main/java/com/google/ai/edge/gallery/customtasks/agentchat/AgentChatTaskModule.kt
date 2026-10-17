@@ -155,7 +155,7 @@ constructor(
       id = BuiltInTaskId.LLM_AGENT_CHAT,
       label = context.getString(R.string.task_label_agent_skills),
       category = Category.LLM,
-  iconVectorResourceId = R.drawable.cloud_sparkle,
+      iconVectorResourceId = R.drawable.agent,
       newFeature = true,
       models = mutableListOf(CLOUD_AGENT_MODEL),
       description = context.getString(R.string.task_desc_agent_skills),
@@ -240,6 +240,7 @@ constructor(
       navigateUp = myData.onNavUp,
       agentTools = agentTools,
       initialQuery = myData.initialQuery,
+      onOpenSettings = myData.onOpenSettings,
     )
   }
 }

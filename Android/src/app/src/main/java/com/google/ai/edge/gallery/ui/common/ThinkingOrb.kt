@@ -44,25 +44,42 @@ fun ThinkingOrb(
   size: Dp = 28.dp,
   active: Boolean = true,
 ) {
-  val transition = rememberInfiniteTransition(label = "thinking-orb")
-  val pulse by
-    transition.animateFloat(
-      initialValue = 0.92f,
-      targetValue = 1.06f,
-      animationSpec =
-        infiniteRepeatable(
-          animation = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
-          repeatMode = RepeatMode.Reverse,
-        ),
-      label = "thinking-orb-pulse",
-    )
-  val rotation by
-    transition.animateFloat(
-      initialValue = 0f,
-      targetValue = 360f,
-      animationSpec = infiniteRepeatable(animation = tween(durationMillis = 9000)),
-      label = "thinking-orb-rotation",
-    )
+  // Do not leave an infinite transition running for a completed/thought orb. Apart from wasting
+  // frames, keeping the animation alive made the finished state look as though it was still live.
+  if (active) {
+    val transition = rememberInfiniteTransition(label = "thinking-orb")
+    val pulse by
+      transition.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.06f,
+        animationSpec =
+          infiniteRepeatable(
+            animation = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+          ),
+        label = "thinking-orb-pulse",
+      )
+    val rotation by
+      transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(animation = tween(durationMillis = 9000)),
+        label = "thinking-orb-rotation",
+      )
+    ThinkingOrbVisual(modifier, size, pulse, rotation, active = true)
+  } else {
+    ThinkingOrbVisual(modifier, size, scale = 1f, rotation = 0f, active = false)
+  }
+}
+
+@Composable
+private fun ThinkingOrbVisual(
+  modifier: Modifier,
+  size: Dp,
+  scale: Float,
+  rotation: Float,
+  active: Boolean,
+) {
   val primary = MaterialTheme.colorScheme.primary
   val secondary = MaterialTheme.colorScheme.tertiary
   val glow = MaterialTheme.colorScheme.primaryContainer
@@ -71,10 +88,9 @@ fun ThinkingOrb(
       modifier
         .size(size)
         .graphicsLayer {
-          val motion = if (active) pulse else 1f
-          scaleX = motion
-          scaleY = motion
-          rotationZ = if (active) rotation else 0f
+          scaleX = scale
+          scaleY = scale
+          rotationZ = rotation
         }
         .drawBehind {
           val drawingSize = this.size

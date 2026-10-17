@@ -73,6 +73,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicLong
 
 private const val TAG = "AGLlmChatViewModel"
 
@@ -84,6 +85,7 @@ open class LlmChatViewModelBase(
   llmSessionManager: LlmSessionManager,
   dataStoreRepository: DataStoreRepository? = null,
 ) : ChatViewModel(runtimeExecutor, llmSessionManager, dataStoreRepository) {
+  private val responseGeneration = AtomicLong(0)
   private val _uiSystemPrompt = MutableStateFlow("")
   val uiSystemPrompt: StateFlow<String> = _uiSystemPrompt.asStateFlow()
   private val _liveMetrics = MutableStateFlow<InferenceMetrics?>(null)
@@ -196,7 +198,9 @@ open class LlmChatViewModelBase(
   ) {
     observeLiveMetrics(model)
     val accelerator = model.currentAccelerator?.name ?: ""
+    val generation = responseGeneration.incrementAndGet()
     viewModelScope.launch(Dispatchers.Default) {
+      if (generation != responseGeneration.get()) return@launch
       setInProgress(true)
       setPreparing(true)
 
@@ -265,6 +269,8 @@ open class LlmChatViewModelBase(
       // Run inference.
       runtimeExecutor.executeStream(context = executionContext, request = request).collect { event
         ->
+        // A cancelled stream may unwind after another turn starts; ignore its stale UI events.
+        if (generation != responseGeneration.get()) return@collect
         when (event) {
           is AgentEvent.LoopInitiated -> {}
           is AgentEvent.ContextCompactionStarted -> {
@@ -408,6 +414,7 @@ open class LlmChatViewModelBase(
             onDone()
           }
           is AgentEvent.Error -> {
+            finishThinkingMessages(model)
             Log.e(TAG, "Error occurred while running inference: ${event.errorMessage}")
             if (getContextCompactionStatus(model) == ContextCompactionStatus.COMPACTING) {
               setContextCompactionStatus(model, ContextCompactionStatus.IDLE)
@@ -417,6 +424,7 @@ open class LlmChatViewModelBase(
             onError(event.errorMessage)
           }
           is AgentEvent.LoopCancelled -> {
+            finishThinkingMessages(model)
             if (getContextCompactionStatus(model) == ContextCompactionStatus.COMPACTING) {
               setContextCompactionStatus(model, ContextCompactionStatus.IDLE)
             }
@@ -428,7 +436,27 @@ open class LlmChatViewModelBase(
     }
   }
 
+  /** Stop live thinking indicators on every terminal path, including cancel and provider errors. */
+  private fun finishThinkingMessages(model: Model) {
+    uiState.value.messagesByModel[model.name].orEmpty().forEachIndexed { index, message ->
+      if (message is ChatMessageThinking && message.inProgress) {
+        replaceMessage(
+          model = model,
+          index = index,
+          message = ChatMessageThinking(
+            content = message.content,
+            inProgress = false,
+            side = message.side,
+            accelerator = message.accelerator,
+            hideSenderLabel = message.hideSenderLabel,
+          ),
+        )
+      }
+    }
+  }
+
   fun stopResponse(model: Model) {
+    responseGeneration.incrementAndGet()
     Log.d(TAG, "Stopping response for model ${model.name}...")
     cancelCompaction()
     if (getContextCompactionStatus(model) == ContextCompactionStatus.COMPACTING) {
@@ -438,6 +466,8 @@ open class LlmChatViewModelBase(
       removeLastMessage(model = model)
     }
     sessionStoppedByModel[model.name] = true
+    finishThinkingMessages(model)
+    setPreparing(false)
     setInProgress(false)
     runtimeExecutor.interrupt()
     Log.d(TAG, "Done stopping response")

@@ -119,6 +119,7 @@ import kotlinx.coroutines.launch
 
 private const val TAG = "AGGalleryNavGraph"
 private const val ROUTE_AGENT_SKILLS = "agent_skills_home"
+private const val ROUTE_CLOUD_SETTINGS = "cloud_settings"
 private const val ROUTE_HOMESCREEN = "homepage"
 private const val ROUTE_MODEL_LIST = "model_list"
 private const val ROUTE_MODEL = "route_model"
@@ -218,12 +219,29 @@ fun GalleryNavHost(
       AgentSkillsMainEntry(
         modelManagerViewModel = modelManagerViewModel,
         tosViewModel = tosViewModel,
+        onOpenSettings = { navController.navigate(ROUTE_CLOUD_SETTINGS) },
+      )
+    }
+
+    composable(
+      route = ROUTE_CLOUD_SETTINGS,
+      enterTransition = { slideEnter() },
+      exitTransition = { slideExit() },
+    ) {
+      CloudProviderSettingsDialog(
+        dataStoreRepository = modelManagerViewModel.dataStoreRepository,
+        onDismiss = { navController.navigateUp() },
+        onSaved = { modelManagerViewModel.selectModel(CLOUD_AGENT_MODEL) },
       )
     }
 
     // The legacy homepage route now resolves to the cloud-only Agent Skills entry.
     composable(route = ROUTE_HOMESCREEN) {
-      AgentSkillsMainEntry(modelManagerViewModel = modelManagerViewModel, tosViewModel = tosViewModel)
+      AgentSkillsMainEntry(
+        modelManagerViewModel = modelManagerViewModel,
+        tosViewModel = tosViewModel,
+        onOpenSettings = { navController.navigate(ROUTE_CLOUD_SETTINGS) },
+      )
     }
 
     // Model list.
@@ -287,97 +305,21 @@ fun GalleryNavHost(
       val modelName = backStackEntry.arguments?.getString("modelName") ?: ""
       val taskId = backStackEntry.arguments?.getString("taskId") ?: ""
       val queryParam = backStackEntry.arguments?.getString("query")
-      val scope = rememberCoroutineScope()
-      val context = LocalContext.current
-
       if (taskId != BuiltInTaskId.LLM_AGENT_CHAT || modelName != CLOUD_AGENT_MODEL.name) {
-        AgentSkillsMainEntry(modelManagerViewModel = modelManagerViewModel, tosViewModel = tosViewModel)
+        AgentSkillsMainEntry(
+          modelManagerViewModel = modelManagerViewModel,
+          tosViewModel = tosViewModel,
+          onOpenSettings = { navController.navigate(ROUTE_CLOUD_SETTINGS) },
+        )
         return@composable
       }
 
-      modelManagerViewModel.getModelByName(name = modelName)?.let { initialModel ->
-        LaunchedEffect(modelName) { modelManagerViewModel.selectModel(initialModel) }
-
-        val customTask = modelManagerViewModel.getCustomTaskByTaskId(id = taskId)
-        if (customTask != null) {
-          if (isLegacyTasks(customTask.task.id)) {
-            customTask.MainScreen(
-              data =
-                CustomTaskDataForBuiltinTask(
-                  modelManagerViewModel = modelManagerViewModel,
-                  onNavUp = {
-                    enableModelListAnimation = false
-                    navController.navigateUp()
-                  },
-                  initialQuery = queryParam,
-                )
-            )
-          } else {
-            var disableAppBarControls by remember { mutableStateOf(false) }
-            var hideTopBar by remember { mutableStateOf(false) }
-            var customNavigateUpCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
-            var customPromptProvider by remember { mutableStateOf<(() -> String)?>(null) }
-            var customOnPromptChanged by remember { mutableStateOf<((String) -> Unit)?>(null) }
-            var customHistoryClickHandler by remember { mutableStateOf<(() -> Unit)?>(null) }
-            var customDefaultPromptProvider by remember { mutableStateOf<(() -> String)?>(null) }
-            CustomTaskScreen(
-              task = customTask.task,
-              initialModel = initialModel,
-              modelManagerViewModel = modelManagerViewModel,
-              disableAppBarControls = disableAppBarControls,
-              hideTopBar = hideTopBar,
-              useThemeColor = customTask.task.useThemeColor,
-              onNavigateUp = {
-                if (customNavigateUpCallback != null) {
-                  customNavigateUpCallback?.invoke()
-                } else {
-                  enableModelListAnimation = false
-                  navController.navigateUp()
-
-                  if (!customTask.keepModelAlive) {
-                    // clean up all models.
-                    for (curModel in customTask.task.models) {
-                      val instanceToCleanUp = curModel.instance
-                      scope.launch(Dispatchers.Default) {
-                        modelManagerViewModel.cleanupModel(
-                          context = context,
-                          task = customTask.task,
-                          model = curModel,
-                          instanceToCleanUp = instanceToCleanUp,
-                        )
-                      }
-                    }
-                  }
-                }
-              },
-              allowEditingSystemPrompt = customPromptProvider != null,
-              curSystemPrompt =
-                customPromptProvider?.invoke() ?: customTask.task.defaultSystemPrompt,
-              defaultSystemPrompt =
-                customDefaultPromptProvider?.invoke() ?: customTask.task.defaultSystemPrompt,
-              onSystemPromptChanged = { newPrompt -> customOnPromptChanged?.invoke(newPrompt) },
-              onHistoryClicked = customHistoryClickHandler,
-            ) { bottomPadding ->
-              customTask.MainScreen(
-                data =
-                  CustomTaskData(
-                    modelManagerViewModel = modelManagerViewModel,
-                    bottomPadding = bottomPadding,
-                    setAppBarControlsDisabled = { disableAppBarControls = it },
-                    setTopBarVisible = { hideTopBar = !it },
-                    setCustomNavigateUpCallback = { customNavigateUpCallback = it },
-                    setSystemPromptProvider = { provider, onPromptChanged ->
-                      customPromptProvider = provider
-                      customOnPromptChanged = onPromptChanged
-                    },
-                    setHistoryClickHandler = { customHistoryClickHandler = it },
-                    setDefaultSystemPromptProvider = { customDefaultPromptProvider = it },
-                  )
-              )
-            }
-          }
-        }
-      }
+      AgentSkillsMainEntry(
+        modelManagerViewModel = modelManagerViewModel,
+        tosViewModel = tosViewModel,
+        onOpenSettings = { navController.navigate(ROUTE_CLOUD_SETTINGS) },
+        initialQuery = queryParam,
+      )
     }
 
     // Global model manager page.
@@ -540,6 +482,8 @@ fun GalleryNavHost(
 private fun AgentSkillsMainEntry(
   modelManagerViewModel: ModelManagerViewModel,
   tosViewModel: TosViewModel,
+  onOpenSettings: () -> Unit,
+  initialQuery: String? = null,
 ) {
   val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
   val context = LocalContext.current
@@ -550,7 +494,6 @@ private fun AgentSkillsMainEntry(
   val cloudConfigured =
     loadCloudProviderConfig(context, modelManagerViewModel.dataStoreRepository).isConfigured
   var showTosDialog by remember { mutableStateOf(!tosViewModel.getIsTosAccepted()) }
-  var showCloudSettings by remember { mutableStateOf(false) }
 
   LaunchedEffect(task) {
     if (task != null) {
@@ -571,56 +514,35 @@ private fun AgentSkillsMainEntry(
       AgentSkillsEntryState(
         message = "Review the app terms to continue.",
         onRetry = null,
-        onCloudSettingsClicked = { showCloudSettings = true },
+        onCloudSettingsClicked = onOpenSettings,
       )
     }
     task == null || selectedModel == null -> {
       AgentSkillsEntryState(
         message = "Agent Skills could not be prepared on this device.",
         onRetry = { modelManagerViewModel.loadModelAllowlist() },
-        onCloudSettingsClicked = { showCloudSettings = true },
+        onCloudSettingsClicked = onOpenSettings,
       )
     }
     !cloudConfigured -> {
       AgentSkillsEntryState(
         message = "Connect a cloud provider and save its API key to start chatting.",
         onRetry = null,
-        onCloudSettingsClicked = { showCloudSettings = true },
+        onCloudSettingsClicked = onOpenSettings,
       )
     }
     else -> {
       LaunchedEffect(selectedModel.name) { modelManagerViewModel.selectModel(selectedModel) }
-      CustomTaskScreen(
-        task = task,
-        initialModel = selectedModel,
-        modelManagerViewModel = modelManagerViewModel,
-        disableAppBarControls = false,
-        hideTopBar = false,
-        useThemeColor = task.useThemeColor,
-        onNavigateUp = {},
-        showBackButton = false,
-        handleSystemBack = false,
-        showCloudSettingsButton = true,
-        onCloudSettingsClicked = { showCloudSettings = true },
-      ) { _ ->
-        agentChatTask?.MainScreen(
-          data =
-            CustomTaskDataForBuiltinTask(
-              modelManagerViewModel = modelManagerViewModel,
-              onNavUp = {},
-              initialQuery = null,
-            )
+      // AgentChatScreen already owns a Scaffold and app bar. Do not nest a second one.
+      agentChatTask?.MainScreen(
+        data = CustomTaskDataForBuiltinTask(
+          modelManagerViewModel = modelManagerViewModel,
+          onNavUp = {},
+          initialQuery = initialQuery,
+          onOpenSettings = onOpenSettings,
         )
-      }
+      )
     }
-  }
-
-  if (showCloudSettings) {
-    CloudProviderSettingsDialog(
-      dataStoreRepository = modelManagerViewModel.dataStoreRepository,
-      onDismiss = { showCloudSettings = false },
-      onSaved = { modelManagerViewModel.selectModel(CLOUD_AGENT_MODEL) },
-    )
   }
 
   if (showTosDialog) {
@@ -658,15 +580,15 @@ private fun AgentSkillsEntryState(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
           ) {
             Icon(
-              painter = painterResource(R.drawable.cloud_sparkle),
+              painter = painterResource(R.drawable.agent),
               contentDescription = null,
-              tint = MaterialTheme.colorScheme.primary,
+              tint = com.google.ai.edge.gallery.ui.common.getTaskIconColor(0),
               modifier = Modifier.size(22.dp),
             )
             Text("Agent Skills")
           }
         },
-        actions = {
+        navigationIcon = {
           IconButton(onClick = onCloudSettingsClicked) {
             Icon(
               imageVector = Icons.Rounded.Settings,
@@ -688,9 +610,9 @@ private fun AgentSkillsEntryState(
         verticalArrangement = Arrangement.Center,
       ) {
         Icon(
-          painter = painterResource(R.drawable.cloud_sparkle),
+          painter = painterResource(R.drawable.agent),
           contentDescription = null,
-          tint = MaterialTheme.colorScheme.primary,
+          tint = com.google.ai.edge.gallery.ui.common.getTaskIconColor(0),
           modifier = Modifier.size(76.dp).scale(iconScale).padding(bottom = 18.dp),
         )
         if (loading) CircularProgressIndicator(modifier = Modifier.padding(bottom = 16.dp))

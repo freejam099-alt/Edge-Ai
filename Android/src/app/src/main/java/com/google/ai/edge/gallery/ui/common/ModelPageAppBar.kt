@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -48,6 +47,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.ai.edge.gallery.BuildConfig
 import com.google.ai.edge.gallery.GalleryEvent
@@ -104,6 +104,7 @@ fun ModelPageAppBar(
   val initStatus by model.initStatusFlow.collectAsStateWithLifecycle()
   val isModelInitializing = initStatus is Model.InitializationStatus.Initializing
   val isModelInitialized = initStatus is Model.InitializationStatus.Initialized
+  val isCloudAgent = task.id == BuiltInTaskId.LLM_AGENT_CHAT && model.name == "cloud-agent-skills"
 
   CenterAlignedTopAppBar(
     title = {
@@ -117,17 +118,27 @@ fun ModelPageAppBar(
           horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
           val tintColor =
-            if (useThemeColor) MaterialTheme.colorScheme.onSurface
+            if (useThemeColor && !isCloudAgent) MaterialTheme.colorScheme.onSurface
             else getTaskIconColor(task = task)
           val icon = task.icon ?: task.iconVectorResourceId?.let { ImageVector.vectorResource(it) }
           if (icon != null) {
             Icon(icon, tint = tintColor, modifier = Modifier.size(24.dp), contentDescription = null)
           }
-          Text(task.label, style = MaterialTheme.typography.titleMedium, color = tintColor)
+          Text(
+            task.label, style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface, maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+          )
         }
 
         // Model chips pager.
-        if (!hideModelSelector) {
+        if (isCloudAgent) {
+          Text(
+            "Cloud model",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        } else if (!hideModelSelector) {
           val enableModelPickerChip = !isModelInitializing && !inProgress
           ModelPickerChip(
             enabled = enableModelPickerChip,
@@ -142,7 +153,13 @@ fun ModelPageAppBar(
     modifier = modifier,
     // The back button.
     navigationIcon =
-      if (showBackButton) {
+      if (showCloudSettingsButton) {
+        {
+          IconButton(onClick = onCloudSettingsClicked, enabled = !inProgress) {
+            Icon(Icons.Rounded.Settings, contentDescription = "Settings")
+          }
+        }
+      } else if (showBackButton) {
         {
           val enableBackButton = !isModelInitializing && !inProgress
           IconButton(onClick = onBackClicked, enabled = enableBackButton) {
@@ -157,53 +174,24 @@ fun ModelPageAppBar(
       },
     // The config button for the model (if existed).
     actions = {
-      if (showCloudSettingsButton) {
-        IconButton(onClick = onCloudSettingsClicked, enabled = !inProgress) {
+      val downloadSucceeded = curDownloadStatus?.status == ModelDownloadStatusType.SUCCEEDED
+      val showConfigButton = !isCloudAgent && model.configs.isNotEmpty() && downloadSucceeded
+      if (showConfigButton) {
+        val enableConfigButton = !isModelInitializing && !inProgress && isModelInitialized
+        IconButton(onClick = { showConfigDialog = true }, enabled = enableConfigButton) {
           Icon(
-            imageVector = Icons.Rounded.Settings,
-            contentDescription = "Cloud provider settings",
-            tint = MaterialTheme.colorScheme.onSurface,
+            imageVector = Icons.Rounded.Tune,
+            contentDescription = stringResource(R.string.cd_model_settings_icon),
           )
         }
       }
-      val downloadSucceeded = curDownloadStatus?.status == ModelDownloadStatusType.SUCCEEDED
-      val showConfigButton = model.configs.isNotEmpty() && downloadSucceeded
-      Box(modifier = Modifier.size(42.dp), contentAlignment = Alignment.Center) {
-        var configButtonOffset = 0.dp
-        if (showConfigButton && shouldShowHistoryButton) {
-          configButtonOffset = (-40).dp
-        }
-        if (showConfigButton) {
-          val enableConfigButton = !isModelInitializing && !inProgress && isModelInitialized
-          IconButton(
-            onClick = { showConfigDialog = true },
-            enabled = enableConfigButton,
-            modifier =
-              Modifier.offset(x = configButtonOffset).alpha(if (!enableConfigButton) 0.5f else 1f),
-          ) {
-            Icon(
-              imageVector = Icons.Rounded.Tune,
-              contentDescription = stringResource(R.string.cd_model_settings_icon),
-              tint = MaterialTheme.colorScheme.onSurface,
-              modifier = Modifier.size(20.dp),
-            )
-          }
-        }
-        if (downloadSucceeded && shouldShowHistoryButton) {
-          val enableHistoryButton =
-            !isModelInitializing && !modelPreparing && !inProgress && isModelInitialized
-          IconButton(
-            onClick = { onHistoryClicked(model) },
-            enabled = enableHistoryButton,
-            modifier = Modifier.alpha(if (!enableHistoryButton) 0.5f else 1f),
-          ) {
-            Icon(
-              imageVector = Icons.Rounded.History,
-              contentDescription = stringResource(R.string.cd_chat_history),
-              tint = MaterialTheme.colorScheme.onSurface,
-              modifier = Modifier.size(20.dp),
-            )
-          }
+      if (downloadSucceeded && shouldShowHistoryButton) {
+        val enableHistoryButton = !isModelInitializing && !modelPreparing && !inProgress && isModelInitialized
+        IconButton(onClick = { onHistoryClicked(model) }, enabled = enableHistoryButton) {
+          Icon(
+            imageVector = Icons.Rounded.History,
+            contentDescription = stringResource(R.string.cd_chat_history),
+          )
         }
       }
     },

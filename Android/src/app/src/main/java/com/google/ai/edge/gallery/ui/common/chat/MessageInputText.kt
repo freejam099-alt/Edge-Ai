@@ -69,6 +69,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.outlined.Add
@@ -107,6 +108,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -428,20 +431,22 @@ fun MessageInputText(
                 Spacer(modifier = Modifier.width(4.dp))
               }
 
-              // Second row: buttons to add extra content, and the action button.
+              // Second row: keep the primary action fixed while accessory actions can scroll.
               Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).offset(y = (-8).dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
               ) {
                 Row(
+                  modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
                   verticalAlignment = Alignment.CenterVertically,
-                  horizontalArrangement = Arrangement.spacedBy(4.dp),
+                  horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                   // A plus button to show a popup menu to add stuff to the chat.
                   Box() {
                     val enableAddButton = !inProgress && !isResettingSession && !modelInitializing
                     OutlinedIconButton(
+                      modifier = Modifier.heightIn(min = 48.dp),
                       enabled = enableAddButton,
                       onClick = { showAddContentMenu = true },
                       colors =
@@ -679,12 +684,18 @@ fun MessageInputText(
                   // Skills.
                   if (showSkillsPicker) {
                     OutlinedButton(
+                      modifier = Modifier.heightIn(min = 48.dp),
                       onClick = onSkillsClicked,
                       enabled = !inProgress && !isResettingSession && !modelInitializing,
                       contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                     ) {
                       val skillsLabel = stringResource(R.string.skills)
                       Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                          ImageVector.vectorResource(R.drawable.skill),
+                          contentDescription = null, modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
                         Text(skillsLabel)
                         Spacer(modifier = Modifier.width(4.dp))
                         Box(
@@ -709,12 +720,15 @@ fun MessageInputText(
                   // MCP.
                   if (showMcpPicker) {
                     OutlinedButton(
+                      modifier = Modifier.heightIn(min = 48.dp),
                       onClick = onMcpClicked,
                       enabled = !inProgress && !isResettingSession && !modelInitializing,
                       contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                     ) {
                       val mcpLabel = stringResource(R.string.mcp)
                       Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.Hub, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
                         Text(mcpLabel)
                         Spacer(modifier = Modifier.width(4.dp))
                         Box(
@@ -740,6 +754,7 @@ fun MessageInputText(
                   if (showLiveMetricsToggle) {
                     val enableLiveMetricsToggle = !isResettingSession && !modelInitializing
                     IconToggleButton(
+                      modifier = Modifier.heightIn(min = 48.dp),
                       checked = isLiveMetricsVisible,
                       onCheckedChange = { onToggleLiveMetrics() },
                       enabled = enableLiveMetricsToggle,
@@ -764,56 +779,64 @@ fun MessageInputText(
                   }
                 }
 
-                // Stop button.
-                if (inProgress && showStopButtonWhenInProgress) {
-                  if (!modelInitializing && !modelPreparing) {
+                // Animate between the fixed stop and send actions; accessory controls never push
+                // this touch target off-screen, even on narrow displays or at larger font scales.
+                AnimatedContent(
+                  targetState = inProgress && showStopButtonWhenInProgress,
+                  label = "composer_send_stop_action",
+                ) { showStopAction ->
+                  if (showStopAction) {
+                    if (!modelInitializing) {
+                      IconButton(
+                        modifier = Modifier.heightIn(min = 48.dp),
+                        onClick = onStopButtonClicked,
+                        colors =
+                          IconButtonDefaults.iconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                          ),
+                      ) {
+                        Icon(
+                          Icons.Rounded.Stop,
+                          contentDescription = stringResource(R.string.cd_stop_icon),
+                          tint = MaterialTheme.colorScheme.primary,
+                        )
+                      }
+                    } else {
+                      Spacer(Modifier.size(48.dp))
+                    }
+                  } else {
                     IconButton(
-                      onClick = onStopButtonClicked,
+                      modifier = Modifier.heightIn(min = 48.dp),
+                      enabled =
+                        !inProgress &&
+                          !isResettingSession &&
+                          !isContextLimitReached &&
+                          (curMessage.isNotBlank() || pickedAudioClips.isNotEmpty()),
+                      onClick = {
+                        val message = curMessage.trim()
+                        onSendMessage(
+                          createMessagesToSend(
+                            pickedImages = pickedImages,
+                            audioClips = pickedAudioClips,
+                            text = message,
+                          )
+                        )
+                        pickedImages = emptyList()
+                        pickedAudioClips = emptyList()
+                      },
                       colors =
                         IconButtonDefaults.iconButtonColors(
-                          containerColor = MaterialTheme.colorScheme.secondaryContainer
+                          containerColor = getTaskIconColor(task = task),
+                          disabledContainerColor = getTaskIconColor(task = task).copy(alpha = 0.3f),
                         ),
                     ) {
                       Icon(
-                        Icons.Rounded.Stop,
-                        contentDescription = stringResource(R.string.cd_stop_icon),
-                        tint = MaterialTheme.colorScheme.primary,
+                        Icons.AutoMirrored.Rounded.Send,
+                        contentDescription = stringResource(R.string.cd_send_prompt_icon),
+                        modifier = Modifier.offset(x = 2.dp),
+                        tint = Color.White,
                       )
                     }
-                  }
-                }
-                // Send button.
-                else {
-                  IconButton(
-                    enabled =
-                      !inProgress &&
-                        !isResettingSession &&
-                        !isContextLimitReached &&
-                        (curMessage.isNotEmpty() || pickedAudioClips.isNotEmpty()),
-                    onClick = {
-                      var message = curMessage.trim()
-                      onSendMessage(
-                        createMessagesToSend(
-                          pickedImages = pickedImages,
-                          audioClips = pickedAudioClips,
-                          text = message,
-                        )
-                      )
-                      pickedImages = emptyList()
-                      pickedAudioClips = emptyList()
-                    },
-                    colors =
-                      IconButtonDefaults.iconButtonColors(
-                        containerColor = getTaskIconColor(task = task),
-                        disabledContainerColor = getTaskIconColor(task = task).copy(alpha = 0.3f),
-                      ),
-                  ) {
-                    Icon(
-                      Icons.AutoMirrored.Rounded.Send,
-                      contentDescription = stringResource(R.string.cd_send_prompt_icon),
-                      modifier = Modifier.offset(x = 2.dp),
-                      tint = Color.White,
-                    )
                   }
                 }
               }

@@ -56,4 +56,5 @@ data class CustomTaskDataForBuiltinTask(
   // Consumers MUST show it to the user and require explicit confirmation before sending it to a
   // model; it must never be sent automatically.
   val initialQuery: String? = null,
+  val onOpenSettings: (() -> Unit)? = null,
 )

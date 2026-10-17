@@ -28,6 +28,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,6 +50,9 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.shape.CircleShape
+import com.google.ai.edge.gallery.ui.common.getTaskIconColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -131,6 +135,7 @@ fun AgentChatScreen(
   skillManagerViewModel: SkillManagerViewModel = hiltViewModel(),
   mcpManagerViewModel: McpManagerViewModel = hiltViewModel(),
   initialQuery: String? = null,
+  onOpenSettings: (() -> Unit)? = null,
 ) {
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
@@ -215,6 +220,7 @@ fun AgentChatScreen(
   LlmChatScreen(
     modelManagerViewModel = modelManagerViewModel,
     taskId = BuiltInTaskId.LLM_AGENT_CHAT,
+    onOpenSettings = onOpenSettings,
     navigateUp = navigateUp,
     viewModel = viewModel,
     skillCount = skillCount,
@@ -495,41 +501,35 @@ fun AgentChatScreen(
           enter = fadeIn(animationSpec = tween(200)),
           exit = fadeOut(animationSpec = tween(200)),
         ) {
-          Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+          Box(
+            modifier = Modifier.fillMaxSize().padding(bottom = 64.dp),
+            contentAlignment = Alignment.Center,
+          ) {
             Column(
-              modifier =
-                Modifier.align(Alignment.Center)
-                  .padding(horizontal = 48.dp)
-                  .padding(bottom = 48.dp),
+              modifier = Modifier.verticalScroll(rememberScrollState())
+                .padding(horizontal = 28.dp, vertical = 16.dp),
               horizontalAlignment = Alignment.CenterHorizontally,
+              verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-              Text(
-                stringResource(R.string.introducing),
-                style = MaterialTheme.typography.headlineSmall,
-                textAlign = TextAlign.Center,
-              )
+              Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+              ) {
+                Icon(
+                  imageVector = ImageVector.vectorResource(R.drawable.agent),
+                  contentDescription = null,
+                  tint = getTaskIconColor(task),
+                  modifier = Modifier.padding(18.dp).size(36.dp),
+                )
+              }
               Text(
                 stringResource(R.string.agent_skills),
-                style =
-                  MaterialTheme.typography.headlineLarge.copy(
-                    fontWeight = FontWeight.Medium,
-                    brush =
-                      Brush.linearGradient(colors = listOf(Color(0xFF85B1F8), Color(0xFF3174F1))),
-                  ),
-                modifier = Modifier.padding(top = 12.dp, bottom = 16.dp),
+                style = MaterialTheme.typography.headlineMedium,
                 textAlign = TextAlign.Center,
               )
               Text(
-                AnnotatedString.fromHtml(
-                  stringResource(
-                    R.string.agent_skills_intro,
-                    AgentSkillsURLs.REPOSITORY,
-                    AgentSkillsURLs.DISCUSSIONS,
-                    stringResource(R.string.agent_skills),
-                  )
-                ),
-                style =
-                  MaterialTheme.typography.headlineSmall.copy(fontSize = 16.sp, lineHeight = 22.sp),
+                stringResource(R.string.agent_skills_welcome_description),
+                style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
               )
@@ -541,7 +541,7 @@ fun AgentChatScreen(
           modifier =
             Modifier.align(Alignment.BottomCenter)
               .horizontalScroll(rememberScrollState())
-              .padding(horizontal = 12.dp),
+              .padding(horizontal = 12.dp, vertical = 8.dp),
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {

@@ -20,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import com.google.ai.edge.gallery.data.Task
+import com.google.ai.edge.gallery.data.BuiltInTaskId
 import com.google.ai.edge.gallery.ui.theme.customColors
 
 @Composable
@@ -40,6 +41,8 @@ fun getTaskBgGradientColors(task: Task): List<Color> {
 
 @Composable
 fun getTaskIconColor(task: Task): Color {
+  // Agent Skills keeps its original red identity, independent of task-list ordering.
+  if (task.id == BuiltInTaskId.LLM_AGENT_CHAT) return getTaskIconColor(0)
   val colors = MaterialTheme.customColors.taskIconColors
   if (colors.isEmpty()) return Color.Transparent
   val colorIndex: Int = (task.index.coerceAtLeast(0)) % colors.size

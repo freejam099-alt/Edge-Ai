@@ -93,12 +93,14 @@ fun LlmChatScreen(
   skillCount: Int = 0,
   mcpCount: Int = 0,
   mcpToolsCount: Int = 0,
+  onOpenSettings: (() -> Unit)? = null,
 ) {
   ChatViewWrapper(
     viewModel = viewModel,
     modelManagerViewModel = modelManagerViewModel,
     taskId = taskId,
     navigateUp = navigateUp,
+    onOpenSettings = onOpenSettings,
     modifier = modifier,
     onSkillClicked = onSkillClicked,
     onMcpClicked = onMcpClicked,
@@ -246,6 +248,7 @@ fun ChatViewWrapper(
   skillCount: Int = 0,
   mcpCount: Int = 0,
   mcpToolsCount: Int = 0,
+  onOpenSettings: (() -> Unit)? = null,
 ) {
   val context = LocalContext.current
   val task = modelManagerViewModel.getTaskById(id = taskId)!!
@@ -397,6 +400,7 @@ fun ChatViewWrapper(
     onSkillClicked = onSkillClicked,
     onMcpClicked = onMcpClicked,
     navigateUp = navigateUp,
+    onOpenSettings = onOpenSettings,
     skillCount = skillCount,
     mcpCount = mcpCount,
     modifier = modifier,

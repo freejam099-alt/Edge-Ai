@@ -55,7 +55,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.collect
@@ -113,6 +112,7 @@ class CloudAgentRuntimeExecutor(
 ) : AgentRuntimeExecutor {
   private val activeConfig = AtomicReference<AgentRuntimeConfig?>(null)
   private val activeConnection = AtomicReference<HttpURLConnection?>(null)
+  private val activeRequestCancelled = AtomicReference<AtomicBoolean?>(null)
   private val interrupted = AtomicBoolean(false)
   private val toolDispatcher = RuntimeToolDispatcher()
 
@@ -144,6 +144,9 @@ class CloudAgentRuntimeExecutor(
     channelFlow {
       send(AgentEvent.LoopInitiated(request))
       interrupted.set(false)
+      val requestCancelled = AtomicBoolean(false)
+      activeRequestCancelled.getAndSet(requestCancelled)?.set(true)
+      activeConnection.getAndSet(null)?.disconnect()
       val config = activeConfig.get()
       if (config == null) {
         send(AgentEvent.Error("Cloud model is not ready. Open Cloud model settings and save a valid API key."))
@@ -160,10 +163,17 @@ class CloudAgentRuntimeExecutor(
       }
 
       val finalResponse = StringBuilder()
-      val streamToken: (String) -> Unit = { token ->
-        if (token.isNotEmpty() && !interrupted.get()) {
+      val streamAnswer: (String) -> Unit = { token ->
+        if (token.isNotEmpty() && !requestCancelled.get()) {
           finalResponse.append(token)
           trySend(AgentEvent.StreamToken(token = token))
+        }
+      }
+      // Only provider-exposed thought/reasoning summaries reach this callback; never infer or
+      // synthesize hidden chain-of-thought from the answer text.
+      val streamThinking: (String) -> Unit = { thought ->
+        if (thought.isNotEmpty() && !requestCancelled.get()) {
+          trySend(AgentEvent.StreamToken(token = "", thinking = thought))
         }
       }
 
@@ -173,30 +183,28 @@ class CloudAgentRuntimeExecutor(
         withContext(Dispatchers.IO) {
           when (providerConfig.providerId) {
             CLOUD_PROVIDER_GEMINI ->
-              runGemini(providerConfig, config.systemInstruction.orEmpty(), history, request.query, imageParts, streamToken)
+              runGemini(providerConfig, config.systemInstruction.orEmpty(), history, request.query, imageParts, requestCancelled, streamAnswer, streamThinking)
             CLOUD_PROVIDER_OPENAI_COMPATIBLE ->
-              runOpenAiCompatible(providerConfig, config.systemInstruction.orEmpty(), history, request.query, imageParts, streamToken)
+              runOpenAiCompatible(providerConfig, config.systemInstruction.orEmpty(), history, request.query, imageParts, requestCancelled, streamAnswer, streamThinking)
             else -> error("Unsupported cloud provider. Choose Gemini or OpenAI-compatible.")
           }
         }
-        if (interrupted.get()) {
+        if (requestCancelled.get()) {
           send(AgentEvent.LoopCancelled)
         } else {
           send(AgentEvent.StreamToken(token = "", done = true))
           send(AgentEvent.LoopTerminated(finalResponse.toString()))
         }
       } catch (e: CancellationException) {
-        activeConnection.getAndSet(null)?.disconnect()
-        throw e
+        if (requestCancelled.get()) send(AgentEvent.LoopCancelled) else throw e
       } catch (e: Exception) {
-        activeConnection.getAndSet(null)?.disconnect()
-        if (interrupted.get()) {
+        if (requestCancelled.get()) {
           send(AgentEvent.LoopCancelled)
         } else {
           send(AgentEvent.Error(e.message ?: "Cloud request failed. Check the provider settings and network connection."))
         }
       } finally {
-        activeConnection.getAndSet(null)?.disconnect()
+        activeRequestCancelled.compareAndSet(requestCancelled, null)
       }
     }
 
@@ -206,7 +214,9 @@ class CloudAgentRuntimeExecutor(
     history: List<Pair<String, String>>,
     query: String,
     images: List<Pair<String, String>>,
-    streamToken: (String) -> Unit,
+    requestCancelled: AtomicBoolean,
+    streamAnswer: (String) -> Unit,
+    streamThinking: (String) -> Unit,
   ) {
     val messages = JSONArray()
     if (systemPrompt.isNotBlank()) {
@@ -219,7 +229,7 @@ class CloudAgentRuntimeExecutor(
     val tools = openAiTools()
 
     repeat(MAX_TOOL_ROUNDS) {
-      check(!interrupted.get()) { "Request cancelled" }
+      check(!requestCancelled.get()) { "Request cancelled" }
       val body =
         JSONObject()
           .put("model", config.modelId)
@@ -234,7 +244,7 @@ class CloudAgentRuntimeExecutor(
       ) {
         body.put("reasoning_effort", config.thinkingEffort)
       }
-      val completion = openAiRequest(config, body, streamToken)
+      val completion = openAiRequest(config, body, requestCancelled, streamAnswer, streamThinking)
       if (completion.toolCalls.isEmpty()) return
       val callsArray = JSONArray()
       completion.toolCalls.forEachIndexed { index, call ->
@@ -265,13 +275,15 @@ class CloudAgentRuntimeExecutor(
     error("The agent reached the maximum number of tool calls for this turn. Try a more focused request.")
   }
 
-  private suspend fun runGemini(
+  private fun runGemini(
     config: CloudProviderConfig,
     systemPrompt: String,
     history: List<Pair<String, String>>,
     query: String,
     images: List<Pair<String, String>>,
-    streamToken: (String) -> Unit,
+    requestCancelled: AtomicBoolean,
+    streamAnswer: (String) -> Unit,
+    streamThinking: (String) -> Unit,
   ) {
     val contents = JSONArray()
     history.forEach { (role, content) ->
@@ -293,51 +305,41 @@ class CloudAgentRuntimeExecutor(
     val tools = geminiTools()
 
     repeat(MAX_TOOL_ROUNDS) {
-      check(!interrupted.get()) { "Request cancelled" }
+      check(!requestCancelled.get()) { "Request cancelled" }
       val body = JSONObject().put("contents", contents).put("tools", tools)
       if (systemPrompt.isNotBlank()) {
         body.put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemPrompt))))
       }
-      if (
-        config.thinkingEffort != CLOUD_THINKING_DEFAULT &&
-          supportsCloudThinkingEffort(config.providerId, config.modelId)
-      ) {
+      val supportsThinking = supportsCloudThinkingEffort(config.providerId, config.modelId)
+      if (supportsThinking || config.thinkingEffort != CLOUD_THINKING_DEFAULT) {
         val thinkingConfig = JSONObject()
-        if (config.modelId.trim().lowercase().startsWith("gemini-3")) {
-          thinkingConfig.put("thinkingLevel", config.thinkingEffort.uppercase())
-        } else {
-          val thinkingBudget =
-            when (config.thinkingEffort) {
-              CLOUD_THINKING_LOW -> 1024
-              CLOUD_THINKING_HIGH -> 24576
-              else -> 8192
-            }
-          thinkingConfig.put("thinkingBudget", thinkingBudget)
+        // includeThoughts requests the provider's explicitly marked thought summary, not hidden
+        // reasoning. Only Gemini model families known to support thinking get this field.
+        if (supportsThinking) thinkingConfig.put("includeThoughts", true)
+        if (config.thinkingEffort != CLOUD_THINKING_DEFAULT && supportsThinking) {
+          if (config.modelId.trim().lowercase().startsWith("gemini-3")) {
+            thinkingConfig.put("thinkingLevel", config.thinkingEffort.uppercase())
+          } else {
+            val thinkingBudget =
+              when (config.thinkingEffort) {
+                CLOUD_THINKING_LOW -> 1024
+                CLOUD_THINKING_HIGH -> 24576
+                else -> 8192
+              }
+            thinkingConfig.put("thinkingBudget", thinkingBudget)
+          }
         }
-        body.put("generationConfig", JSONObject().put("thinkingConfig", thinkingConfig))
-      }
-      val response = geminiRequest(config, body)
-      val candidate = response.optJSONArray("candidates")?.optJSONObject(0)
-        ?: error("The provider returned no response. Check the model ID and API key.")
-      val responseContent = candidate.optJSONObject("content") ?: JSONObject()
-      val parts = responseContent.optJSONArray("parts") ?: JSONArray()
-      val calls = mutableListOf<Pair<String, JSONObject>>()
-      val text = StringBuilder()
-      for (index in 0 until parts.length()) {
-        val part = parts.optJSONObject(index) ?: continue
-        part.optString("text").takeIf { it.isNotEmpty() }?.let(text::append)
-        val functionCall = part.optJSONObject("functionCall")
-        if (functionCall != null) {
-          calls.add(functionCall.optString("name") to (functionCall.optJSONObject("args") ?: JSONObject()))
+        if (thinkingConfig.length() > 0) {
+          body.put("generationConfig", JSONObject().put("thinkingConfig", thinkingConfig))
         }
       }
-      if (calls.isEmpty()) {
-        emitTextSmoothly(text.toString(), streamToken)
-        return
-      }
-      contents.put(JSONObject().put("role", "model").put("parts", parts))
+
+      val stream = geminiStreamRequest(config, body, requestCancelled, streamAnswer, streamThinking)
+      if (stream.calls.isEmpty()) return
+      // Keep the original model parts (including thoughtSignature) intact for the next tool round.
+      contents.put(JSONObject().put("role", "model").put("parts", stream.parts))
       val functionResponses = JSONArray()
-      calls.forEach { (name, args) ->
+      stream.calls.forEach { (name, args) ->
         val result = invokeTool(name, args.toString(), config)
         functionResponses.put(
           JSONObject()
@@ -352,7 +354,9 @@ class CloudAgentRuntimeExecutor(
   private fun openAiRequest(
     config: CloudProviderConfig,
     body: JSONObject,
-    streamToken: (String) -> Unit,
+    requestCancelled: AtomicBoolean,
+    streamAnswer: (String) -> Unit,
+    streamThinking: (String) -> Unit,
   ): OpenAiCompletion {
     val endpoint = config.endpoint.trim().trimEnd('/')
     val requestUrl = if (endpoint.endsWith(OPENAI_CHAT_PATH)) endpoint else "$endpoint$OPENAI_CHAT_PATH"
@@ -373,19 +377,21 @@ class CloudAgentRuntimeExecutor(
       val toolCalls = TreeMap<Int, MutableOpenAiToolCall>()
       val responseText = StringBuilder()
       BufferedReader(InputStreamReader(connection.inputStream, StandardCharsets.UTF_8)).use { reader ->
-        while (true) {
-          if (interrupted.get()) throw CancellationException("Request cancelled")
-          val line = reader.readLine() ?: break
-          if (!line.startsWith("data:")) continue
-          val data = line.removePrefix("data:").trim()
-          if (data.isEmpty() || data == "[DONE]") continue
-          val chunk = runCatching { JSONObject(data) }.getOrNull() ?: continue
-          val delta = chunk.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("delta") ?: continue
+        readSseDataEvents(reader, requestCancelled) { data ->
+          if (data == "[DONE]") return@readSseDataEvents
+          val chunk = parseSseJson(data)
+          throwIfStreamProviderError(chunk)
+          val delta = chunk.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("delta") ?: return@readSseDataEvents
           delta.optString("content").takeIf { it.isNotEmpty() }?.let { token ->
             responseText.append(token)
-            streamToken(token)
+            streamAnswer(token)
           }
-          val deltas = delta.optJSONArray("tool_calls") ?: continue
+          // Compatible providers expose reasoning only when they choose to include it. Never
+          // derive this field from ordinary response text.
+          listOf("reasoning_content", "reasoning").forEach { key ->
+            delta.optString(key).takeIf { it.isNotEmpty() }?.let(streamThinking)
+          }
+          val deltas = delta.optJSONArray("tool_calls") ?: return@readSseDataEvents
           for (i in 0 until deltas.length()) {
             val item = deltas.optJSONObject(i) ?: continue
             val index = item.optInt("index", i)
@@ -407,6 +413,62 @@ class CloudAgentRuntimeExecutor(
           )
         },
       )
+    } finally {
+      activeConnection.compareAndSet(connection, null)
+      connection.disconnect()
+    }
+  }
+
+  private fun geminiStreamRequest(
+    config: CloudProviderConfig,
+    body: JSONObject,
+    requestCancelled: AtomicBoolean,
+    streamAnswer: (String) -> Unit,
+    streamThinking: (String) -> Unit,
+  ): GeminiStreamResult {
+    val endpoint = config.endpoint.trim().trimEnd('/')
+    val model = URLEncoder.encode(config.modelId, "UTF-8").replace("+", "%20")
+    val requestUrl = "$endpoint/models/$model:streamGenerateContent?alt=sse"
+    val connection = (URL(requestUrl).openConnection() as HttpURLConnection).apply {
+      requestMethod = "POST"
+      connectTimeout = 20_000
+      readTimeout = 120_000
+      doOutput = true
+      setRequestProperty("Content-Type", "application/json")
+      setRequestProperty("Accept", "text/event-stream")
+      setRequestProperty("x-goog-api-key", config.apiKey)
+    }
+    activeConnection.set(connection)
+    try {
+      connection.outputStream.use { it.write(body.toString().toByteArray(StandardCharsets.UTF_8)) }
+      val code = connection.responseCode
+      if (code !in 200..299) throw providerError(connection, code)
+      val accumulated = GeminiStreamAccumulator()
+      var sawCandidate = false
+      BufferedReader(InputStreamReader(connection.inputStream, StandardCharsets.UTF_8)).use { reader ->
+        readSseDataEvents(reader, requestCancelled) { data ->
+          if (data == "[DONE]") return@readSseDataEvents
+          val chunk = parseSseJson(data)
+          throwIfStreamProviderError(chunk)
+          val candidates = chunk.optJSONArray("candidates") ?: return@readSseDataEvents
+          val candidate = candidates.optJSONObject(0) ?: return@readSseDataEvents
+          sawCandidate = true
+          val parts = candidate.optJSONObject("content")?.optJSONArray("parts") ?: return@readSseDataEvents
+          for (index in 0 until parts.length()) {
+            val part = parts.optJSONObject(index) ?: continue
+            accumulated.add(index, part)
+            val text = part.optString("text")
+            if (text.isNotEmpty()) {
+              if (part.optBoolean("thought", false)) streamThinking(text) else streamAnswer(text)
+            }
+          }
+        }
+      }
+      if (!sawCandidate) error("The provider returned no response. Check the model ID and API key.")
+      return accumulated.result()
+    } catch (e: java.io.IOException) {
+      if (requestCancelled.get()) throw CancellationException("Request cancelled", e)
+      throw e
     } finally {
       activeConnection.compareAndSet(connection, null)
       connection.disconnect()
@@ -696,15 +758,6 @@ class CloudAgentRuntimeExecutor(
     return output.toByteArray()
   }
 
-  private suspend fun emitTextSmoothly(text: String, streamToken: (String) -> Unit) {
-    if (text.isEmpty()) return
-    text.chunked(20).forEach { chunk ->
-      if (interrupted.get()) throw CancellationException("Request cancelled")
-      streamToken(chunk)
-      delay(14)
-    }
-  }
-
   override suspend fun execute(context: AgentExecutionContext, request: AgentRequest): AgentResponse {
     var output = ""
     var success = true
@@ -721,6 +774,7 @@ class CloudAgentRuntimeExecutor(
 
   override fun interrupt() {
     interrupted.set(true)
+    activeRequestCancelled.get()?.set(true)
     activeConnection.getAndSet(null)?.disconnect()
   }
 
@@ -747,4 +801,111 @@ private class MutableOpenAiToolCall {
   var id: String = ""
   val name = StringBuilder()
   val arguments = StringBuilder()
+}
+
+
+/** Reads standard SSE data frames, including multiline data and a final unterminated frame. */
+internal fun readSseDataEvents(
+  reader: BufferedReader,
+  interrupted: AtomicBoolean,
+  onData: (String) -> Unit,
+) {
+  val dataLines = mutableListOf<String>()
+  fun dispatch(): Boolean {
+    if (dataLines.isEmpty()) return false
+    val data = dataLines.joinToString("\n")
+    dataLines.clear()
+    onData(data)
+    return data == "[DONE]"
+  }
+  while (true) {
+    if (interrupted.get()) throw CancellationException("Request cancelled")
+    val line = try {
+      reader.readLine()
+    } catch (e: java.io.IOException) {
+      if (interrupted.get()) throw CancellationException("Request cancelled", e)
+      throw e
+    } ?: break
+    if (line.isEmpty()) {
+      if (dispatch()) return
+    } else if (!line.startsWith(":")) {
+      val colon = line.indexOf(':')
+      val field = if (colon < 0) line else line.substring(0, colon)
+      if (field == "data") {
+        var value = if (colon < 0) "" else line.substring(colon + 1)
+        if (value.startsWith(" ")) value = value.substring(1)
+        dataLines.add(value)
+      }
+    }
+  }
+  if (interrupted.get()) throw CancellationException("Request cancelled")
+  dispatch()
+}
+
+internal fun parseSseJson(data: String): JSONObject =
+  try {
+    JSONObject(data)
+  } catch (e: Exception) {
+    throw IllegalStateException("The cloud provider sent malformed streaming data: ${e.message ?: data.take(160)}", e)
+  }
+
+internal fun throwIfStreamProviderError(json: JSONObject) {
+  json.optJSONObject("error")?.let { error ->
+    throw IllegalStateException(error.optString("message").ifBlank { error.toString() })
+  }
+}
+
+private data class GeminiStreamResult(
+  val parts: JSONArray,
+  val calls: List<Pair<String, JSONObject>>,
+)
+
+/** Merges Gemini deltas by part index/type while retaining signatures and other provider fields. */
+private class GeminiStreamAccumulator {
+  private data class Slot(val index: Int, val thought: Boolean, val isCall: Boolean, val part: JSONObject)
+  private val slots = mutableListOf<Slot>()
+
+  fun add(index: Int, incoming: JSONObject) {
+    val thought = incoming.optBoolean("thought", false)
+    val isCall = incoming.optJSONObject("functionCall") != null
+    val slot = slots.firstOrNull { it.index == index && it.thought == thought && it.isCall == isCall }
+    if (slot == null) {
+      slots.add(Slot(index, thought, isCall, JSONObject(incoming.toString())))
+      return
+    }
+    incoming.optString("text").takeIf { it.isNotEmpty() }?.let { text ->
+      slot.part.put("text", slot.part.optString("text") + text)
+    }
+    incoming.optJSONObject("functionCall")?.let { functionCall ->
+      val merged = JSONObject(slot.part.optJSONObject("functionCall")?.toString() ?: "{}")
+      functionCall.optString("name").takeIf { it.isNotEmpty() }?.let { merged.put("name", it) }
+      functionCall.optJSONObject("args")?.let { args ->
+        val mergedArgs = JSONObject(merged.optJSONObject("args")?.toString() ?: "{}")
+        val keys = args.keys()
+        while (keys.hasNext()) {
+          val key = keys.next()
+          mergedArgs.put(key, args.get(key))
+        }
+        merged.put("args", mergedArgs)
+      }
+      slot.part.put("functionCall", merged)
+    }
+    val keys = incoming.keys()
+    while (keys.hasNext()) {
+      val key = keys.next()
+      if (key != "text" && key != "functionCall") slot.part.put(key, incoming.get(key))
+    }
+  }
+
+  fun result(): GeminiStreamResult {
+    val parts = JSONArray()
+    val calls = mutableListOf<Pair<String, JSONObject>>()
+    slots.sortedBy { it.index }.forEach { slot ->
+      parts.put(slot.part)
+      slot.part.optJSONObject("functionCall")?.let { call ->
+        calls.add(call.optString("name") to (call.optJSONObject("args") ?: JSONObject()))
+      }
+    }
+    return GeminiStreamResult(parts, calls)
+  }
 }

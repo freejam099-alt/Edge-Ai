@@ -536,7 +536,7 @@ fun ChatPanel(
                       is ChatMessageText ->
                         MessageBodyText(
                           message = message,
-                          inProgress = uiState.inProgress,
+                          inProgress = uiState.inProgress && index == messages.lastIndex,
                           horizontalPadding =
                             if (isAgentResponseText) {
                               0.dp

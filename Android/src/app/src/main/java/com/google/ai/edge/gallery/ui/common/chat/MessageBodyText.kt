@@ -29,7 +29,6 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.google.ai.edge.gallery.ui.common.BufferedFadingMarkdownText
 import com.google.ai.edge.gallery.ui.common.MarkdownText
 
 /** Composable function to display the text content of a ChatMessageText. */
@@ -51,9 +50,11 @@ fun MessageBodyText(
     }
   } else if (message.side == ChatSide.AGENT) {
       if (message.isMarkdown) {
-        BufferedFadingMarkdownText(
+        // Streamed content can change several times per second. Render its current snapshot
+        // directly: the buffered crossfade keeps an older markdown tree visible while its
+        // animation runs, effectively queueing updates and delaying the newest tokens.
+        MarkdownText(
           text = message.content,
-          inProgress = inProgress,
           modifier =
             Modifier.padding(vertical = 12.dp)
               .padding(horizontal = horizontalPadding)

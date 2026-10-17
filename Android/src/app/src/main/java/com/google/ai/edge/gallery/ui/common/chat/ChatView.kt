@@ -137,6 +137,7 @@ fun ChatView(
   curSystemPrompt: String = "",
   onSystemPromptChanged: (String) -> Unit = {},
   sendMessageTrigger: SendMessageTrigger? = null,
+  onOpenSettings: (() -> Unit)? = null,
 ) {
   val uiState by viewModel.uiState.collectAsState()
   val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
@@ -199,7 +200,7 @@ fun ChatView(
   }
 
   // Handle system's edge swipe.
-  BackHandler {
+  BackHandler(enabled = drawerState.isOpen || onOpenSettings == null) {
     val isModelInitializing = selectedModel.initializing
     if (drawerState.isOpen) {
       scope.launch { drawerState.close() }
@@ -285,6 +286,9 @@ fun ChatView(
             ModelPageAppBar(
               task = task,
               model = selectedModel,
+              showBackButton = onOpenSettings == null,
+              showCloudSettingsButton = onOpenSettings != null,
+              onCloudSettingsClicked = { onOpenSettings?.invoke() },
               modelManagerViewModel = modelManagerViewModel,
               inProgress = uiState.inProgress,
               modelPreparing = uiState.preparing,
