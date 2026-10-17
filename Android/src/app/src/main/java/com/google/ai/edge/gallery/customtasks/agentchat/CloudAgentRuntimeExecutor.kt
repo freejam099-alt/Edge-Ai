@@ -265,7 +265,7 @@ class CloudAgentRuntimeExecutor(
     error("The agent reached the maximum number of tool calls for this turn. Try a more focused request.")
   }
 
-  private fun runGemini(
+  private suspend fun runGemini(
     config: CloudProviderConfig,
     systemPrompt: String,
     history: List<Pair<String, String>>,
