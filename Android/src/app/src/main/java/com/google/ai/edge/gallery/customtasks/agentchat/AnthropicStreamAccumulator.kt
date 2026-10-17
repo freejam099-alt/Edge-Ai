@@ -21,8 +21,8 @@ internal class AnthropicStreamAccumulator {
         blocks[index] = block
         when (block.optString("type")) {
           "tool_use" -> toolInputs[index] = StringBuilder()
-          "text" -> block.optString("text").takeIf { it.isNotEmpty() }?.let(answer)
-          "thinking" -> block.optString("thinking").takeIf { it.isNotEmpty() }?.let(thinking)
+          "text" -> block.responseText("text").takeIf { it.isNotEmpty() }?.let(answer)
+          "thinking" -> block.responseText("thinking").takeIf { it.isNotEmpty() }?.let { thinking(CLOUD_PROCESSING_STATUS) }
         }
       }
       "content_block_delta" -> {
@@ -31,17 +31,17 @@ internal class AnthropicStreamAccumulator {
         val delta = chunk.getJSONObject("delta")
         when (delta.optString("type")) {
           "text_delta" -> {
-            val text = delta.optString("text")
-            block.put("text", block.optString("text") + text)
+            val text = delta.responseText("text")
+            block.put("text", block.responseText("text") + text)
             answer(text)
           }
           "thinking_delta" -> {
-            val text = delta.optString("thinking")
-            block.put("thinking", block.optString("thinking") + text)
-            thinking(text)
+            val text = delta.responseText("thinking")
+            block.put("thinking", block.responseText("thinking") + text)
+            if (text.isNotBlank()) thinking(CLOUD_PROCESSING_STATUS)
           }
-          "signature_delta" -> block.put("signature", block.optString("signature") + delta.optString("signature"))
-          "input_json_delta" -> toolInputs.getOrPut(index) { StringBuilder() }.append(delta.optString("partial_json"))
+          "signature_delta" -> block.put("signature", block.responseText("signature") + delta.responseText("signature"))
+          "input_json_delta" -> toolInputs.getOrPut(index) { StringBuilder() }.append(delta.responseText("partial_json"))
         }
       }
       "content_block_stop" -> {

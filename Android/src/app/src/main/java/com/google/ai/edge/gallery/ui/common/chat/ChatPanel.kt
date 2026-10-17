@@ -402,6 +402,8 @@ fun ChatPanel(
           verticalArrangement = Arrangement.Top,
         ) {
           messages.forEachIndexed { index, message ->
+            if (!shouldRenderChatMessage(message)) return@forEachIndexed
+
             val imageHistoryCurIndex = remember { mutableIntStateOf(0) }
             var hAlign: Alignment.Horizontal = Alignment.End
             var backgroundColor: Color = MaterialTheme.customColors.userBubbleBgColor
@@ -574,9 +576,7 @@ fun ChatPanel(
                       // Thinking
                       is ChatMessageThinking ->
                         MessageBodyThinking(
-                          thinkingText = message.content,
                           inProgress = message.inProgress,
-                          onCopyClicked = copyToClipboard,
                         )
 
                       else -> {}

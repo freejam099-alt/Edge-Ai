@@ -84,8 +84,10 @@ object ChatMessageMapper {
             hideSenderLabel = protoMsg.hideSenderLabel,
           )
         "THINKING" ->
-          ChatMessageThinking(
-            content = protoMsg.content,
+          if (protoMsg.content.trim().equals("null", ignoreCase = true) ||
+            (protoMsg.content.isBlank() && !protoMsg.inProgress)) null else ChatMessageThinking(
+            // Older sessions may contain provider reasoning. Discard it on restore.
+            content = GENERIC_THINKING_STATUS,
             side = side,
             inProgress = protoMsg.inProgress,
             accelerator = protoMsg.accelerator,
@@ -205,7 +207,7 @@ object ChatMessageMapper {
         is ChatMessageThinking -> {
           builder
             .setMessageType("THINKING")
-            .setContent(msg.content)
+            .setContent(GENERIC_THINKING_STATUS)
             .setSide(mapChatSide(msg.side))
             .setInProgress(msg.inProgress)
             .setAccelerator(msg.accelerator)

@@ -49,7 +49,6 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
-import java.util.TreeMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
@@ -162,17 +161,19 @@ class CloudAgentRuntimeExecutor(
       }
 
       val finalResponse = StringBuilder()
-      val streamAnswer: (String) -> Unit = { token ->
+      val answerFilter = CloudAnswerFilter { token ->
         if (token.isNotEmpty() && !requestCancelled.get()) {
           finalResponse.append(token)
           trySend(AgentEvent.StreamToken(token = token))
         }
       }
-      // Only provider-exposed thought/reasoning summaries reach this callback; never infer or
-      // synthesize hidden chain-of-thought from the answer text.
-      val streamThinking: (String) -> Unit = { thought ->
-        if (thought.isNotEmpty() && !requestCancelled.get()) {
-          trySend(AgentEvent.StreamToken(token = "", thinking = thought))
+      val streamAnswer: (String) -> Unit = answerFilter::add
+      // Thinking is a lifecycle status only. Never persist private provider reasoning in chat.
+      var processingShown = false
+      val streamThinking: (String) -> Unit = { status ->
+        if (status.isNotBlank() && !processingShown && !requestCancelled.get()) {
+          processingShown = true
+          trySend(AgentEvent.StreamToken(token = "", thinking = CLOUD_PROCESSING_STATUS))
         }
       }
 
@@ -193,6 +194,10 @@ class CloudAgentRuntimeExecutor(
         if (requestCancelled.get()) {
           send(AgentEvent.LoopCancelled)
         } else {
+          answerFilter.finish()
+          check(finalResponse.isNotBlank()) {
+            "The provider returned no answer text. Please retry or choose another model."
+          }
           send(AgentEvent.StreamToken(token = "", done = true))
           send(AgentEvent.LoopTerminated(finalResponse.toString()))
         }
@@ -408,9 +413,8 @@ class CloudAgentRuntimeExecutor(
       val supportsThinking = supportsCloudThinkingEffort(if (config.protocol == "gemini") CLOUD_PROVIDER_GEMINI else config.providerId, config.modelId)
       if (supportsThinking || config.thinkingEffort != CLOUD_THINKING_DEFAULT) {
         val thinkingConfig = JSONObject()
-        // includeThoughts requests the provider's explicitly marked thought summary, not hidden
-        // reasoning. Only Gemini model families known to support thinking get this field.
-        if (supportsThinking) thinkingConfig.put("includeThoughts", true)
+        // Keep model thinking enabled when supported, but do not request thought text for display.
+        if (supportsThinking) thinkingConfig.put("includeThoughts", false)
         if (config.thinkingEffort != CLOUD_THINKING_DEFAULT && supportsThinking) {
           if (config.modelId.trim().lowercase().startsWith("gemini-3")) {
             thinkingConfig.put("thinkingLevel", config.thinkingEffort.uppercase())
@@ -470,50 +474,16 @@ class CloudAgentRuntimeExecutor(
       connection.outputStream.use { it.write(body.toString().toByteArray(StandardCharsets.UTF_8)) }
       val code = connection.responseCode
       if (code !in 200..299) throw providerError(connection, code)
-      val toolCalls = TreeMap<Int, MutableOpenAiToolCall>()
-      val responseText = StringBuilder()
-      val responseReasoning = StringBuilder()
+      val accumulator = OpenAiStreamAccumulator()
       BufferedReader(InputStreamReader(connection.inputStream, StandardCharsets.UTF_8)).use { reader ->
         readSseDataEvents(reader, requestCancelled) { data ->
           if (data == "[DONE]") return@readSseDataEvents
           val chunk = parseSseJson(data)
           throwIfStreamProviderError(chunk)
-          val delta = chunk.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("delta") ?: return@readSseDataEvents
-          delta.optString("content").takeIf { it.isNotEmpty() }?.let { token ->
-            responseText.append(token)
-            streamAnswer(token)
-          }
-          // Compatible providers expose reasoning only when they choose to include it. Never
-          // derive this field from ordinary response text.
-          listOf("reasoning_content", "reasoning").forEach { key ->
-            delta.optString(key).takeIf { it.isNotEmpty() }?.let { thought ->
-              if (key == "reasoning_content") responseReasoning.append(thought)
-              streamThinking(thought)
-            }
-          }
-          val deltas = delta.optJSONArray("tool_calls") ?: return@readSseDataEvents
-          for (i in 0 until deltas.length()) {
-            val item = deltas.optJSONObject(i) ?: continue
-            val index = item.optInt("index", i)
-            val target = toolCalls.getOrPut(index) { MutableOpenAiToolCall() }
-            item.optString("id").takeIf { it.isNotEmpty() }?.let { target.id = it }
-            val function = item.optJSONObject("function") ?: continue
-            function.optString("name").takeIf { it.isNotEmpty() }?.let { target.name.append(it) }
-            function.optString("arguments").takeIf { it.isNotEmpty() }?.let { target.arguments.append(it) }
-          }
+          accumulator.add(chunk, streamAnswer, streamThinking)
         }
       }
-      return OpenAiCompletion(
-        text = responseText.toString(),
-        reasoning = responseReasoning.toString(),
-        toolCalls = toolCalls.values.map { call ->
-          CloudToolCall(
-            id = call.id.ifBlank { "call_${System.nanoTime()}" },
-            name = call.name.toString(),
-            arguments = call.arguments.toString().ifBlank { "{}" },
-          )
-        },
-      )
+      return accumulator.result()
     } finally {
       activeConnection.compareAndSet(connection, null)
       connection.disconnect()
@@ -559,9 +529,9 @@ class CloudAgentRuntimeExecutor(
           for (index in 0 until parts.length()) {
             val part = parts.optJSONObject(index) ?: continue
             accumulated.add(index, part)
-            val text = part.optString("text")
+            val text = part.responseText("text")
             if (text.isNotEmpty()) {
-              if (part.optBoolean("thought", false)) streamThinking(text) else streamAnswer(text)
+              if (part.optBoolean("thought", false)) streamThinking(CLOUD_PROCESSING_STATUS) else streamAnswer(text)
             }
           }
         }
@@ -899,15 +869,6 @@ class CloudAgentRuntimeExecutor(
   }
 }
 
-private data class CloudToolCall(val id: String, val name: String, val arguments: String)
-private data class OpenAiCompletion(val text: String, val toolCalls: List<CloudToolCall>, val reasoning: String = "")
-private class MutableOpenAiToolCall {
-  var id: String = ""
-  val name = StringBuilder()
-  val arguments = StringBuilder()
-}
-
-
 /** Reads standard SSE data frames, including multiline data and a final unterminated frame. */
 internal fun readSseDataEvents(
   reader: BufferedReader,
@@ -977,8 +938,8 @@ private class GeminiStreamAccumulator {
       slots.add(Slot(index, thought, isCall, JSONObject(incoming.toString())))
       return
     }
-    incoming.optString("text").takeIf { it.isNotEmpty() }?.let { text ->
-      slot.part.put("text", slot.part.optString("text") + text)
+    incoming.responseText("text").takeIf { it.isNotEmpty() }?.let { text ->
+      slot.part.put("text", slot.part.responseText("text") + text)
     }
     incoming.optJSONObject("functionCall")?.let { functionCall ->
       val merged = JSONObject(slot.part.optJSONObject("functionCall")?.toString() ?: "{}")

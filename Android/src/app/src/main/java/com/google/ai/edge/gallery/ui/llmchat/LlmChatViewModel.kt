@@ -56,6 +56,8 @@ import com.google.ai.edge.gallery.ui.common.chat.ChatViewModel
 import com.google.ai.edge.gallery.ui.common.chat.ContextCompactionStatus
 import com.google.ai.edge.gallery.ui.common.chat.ContextCompactionTriggerType
 import com.google.ai.edge.gallery.ui.common.chat.convertToLitertMessage
+import com.google.ai.edge.gallery.ui.common.chat.GENERIC_THINKING_STATUS
+import com.google.ai.edge.gallery.ui.common.chat.shouldAppendAssistantToken
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.litertlm.ExperimentalApi
 import com.google.ai.edge.litertlm.Message
@@ -296,30 +298,43 @@ open class LlmChatViewModelBase(
               removeLastMessage(model = model)
             }
 
-            val thinkingText = event.thinking
-            val isThinking = !thinkingText.isNullOrEmpty()
+            // A provider's thinking field is only a signal that processing is underway. Never
+            // retain or display its contents; persisted thinking is always this generic status.
+            val hasThinkingStatus = !event.thinking.isNullOrBlank() &&
+              !event.thinking.trim().equals("null", ignoreCase = true)
             var currentLastMessage = getLastMessage(model = model)
 
-            // If thinking is enabled, add a thinking message.
-            if (isThinking) {
+            if (hasThinkingStatus) {
               if (currentLastMessage?.type != ChatMessageType.THINKING) {
                 addMessage(
                   model = model,
                   message =
                     ChatMessageThinking(
-                      content = "",
-                      inProgress = true,
+                      content = GENERIC_THINKING_STATUS,
+                      inProgress = !event.done,
                       side = ChatSide.AGENT,
                       accelerator = accelerator,
                       hideSenderLabel =
                         currentLastMessage?.type == ChatMessageType.COLLAPSABLE_PROGRESS_PANEL,
                     ),
                 )
+              } else if (
+                event.done && (currentLastMessage as ChatMessageThinking).inProgress
+              ) {
+                val thinkingMsg = currentLastMessage as ChatMessageThinking
+                replaceLastMessage(
+                  model = model,
+                  message =
+                    ChatMessageThinking(
+                      content = GENERIC_THINKING_STATUS,
+                      inProgress = false,
+                      side = thinkingMsg.side,
+                      accelerator = thinkingMsg.accelerator,
+                      hideSenderLabel = thinkingMsg.hideSenderLabel,
+                    ),
+                  type = ChatMessageType.THINKING,
+                )
               }
-              updateLastThinkingMessageContentIncrementally(
-                model = model,
-                partialContent = thinkingText!!,
-              )
             } else {
               if (currentLastMessage?.type == ChatMessageType.THINKING) {
                 val thinkingMsg = currentLastMessage as ChatMessageThinking
@@ -328,7 +343,7 @@ open class LlmChatViewModelBase(
                     model = model,
                     message =
                       ChatMessageThinking(
-                        content = thinkingMsg.content,
+                        content = GENERIC_THINKING_STATUS,
                         inProgress = false,
                         side = thinkingMsg.side,
                         accelerator = thinkingMsg.accelerator,
@@ -338,35 +353,43 @@ open class LlmChatViewModelBase(
                   )
                 }
               }
-              currentLastMessage = getLastMessage(model = model)
-              if (
-                currentLastMessage?.type != ChatMessageType.TEXT ||
-                  currentLastMessage.side != ChatSide.AGENT
-              ) {
-                // Add an empty message that will receive streaming results.
-                addMessage(
-                  model = model,
-                  message =
-                    ChatMessageText(
-                      content = "",
-                      side = ChatSide.AGENT,
-                      accelerator = accelerator,
-                      hideSenderLabel =
-                        currentLastMessage?.type == ChatMessageType.COLLAPSABLE_PROGRESS_PANEL ||
-                          currentLastMessage?.type == ChatMessageType.THINKING,
-                    ),
-                )
-              }
+            }
+            currentLastMessage = getLastMessage(model = model)
 
-              // Incrementally update the streamed partial results.
+            val hasCurrentAssistantText =
+              currentLastMessage is ChatMessageText && currentLastMessage.side == ChatSide.AGENT
+            val hasAnswerChunk =
+              shouldAppendAssistantToken(event.token, hasExistingAnswer = hasCurrentAssistantText)
+            if (hasAnswerChunk && !hasCurrentAssistantText) {
+              // A visible token creates the response bubble; done-only/control-only events do not.
+              addMessage(
+                model = model,
+                message =
+                  ChatMessageText(
+                    content = "",
+                    side = ChatSide.AGENT,
+                    accelerator = accelerator,
+                    hideSenderLabel =
+                      currentLastMessage?.type == ChatMessageType.COLLAPSABLE_PROGRESS_PANEL ||
+                        currentLastMessage?.type == ChatMessageType.THINKING,
+                  ),
+              )
+            }
+
+            currentLastMessage = getLastMessage(model = model)
+            val canUpdateAssistantText =
+              hasAnswerChunk ||
+                (event.done &&
+                  currentLastMessage is ChatMessageText &&
+                  currentLastMessage.side == ChatSide.AGENT)
+            if (canUpdateAssistantText) {
+              // Empty completion chunks update latency only when an answer bubble already exists.
               val latencyMs: Long = if (event.done) System.currentTimeMillis() - start else -1
-              if (event.token.isNotEmpty() || wasLoading || event.done) {
-                updateLastTextMessageContentIncrementally(
-                  model = model,
-                  partialContent = event.token,
-                  latencyMs = latencyMs.toFloat(),
-                )
-              }
+              updateLastTextMessageContentIncrementally(
+                model = model,
+                partialContent = if (hasAnswerChunk) event.token else "",
+                latencyMs = latencyMs.toFloat(),
+              )
             }
 
             if (firstRun) {
@@ -384,7 +407,7 @@ open class LlmChatViewModelBase(
                   model = model,
                   message =
                     ChatMessageThinking(
-                      content = thinkingMsg.content,
+                      content = GENERIC_THINKING_STATUS,
                       inProgress = false,
                       side = thinkingMsg.side,
                       accelerator = thinkingMsg.accelerator,
@@ -444,7 +467,7 @@ open class LlmChatViewModelBase(
           model = model,
           index = index,
           message = ChatMessageThinking(
-            content = message.content,
+            content = GENERIC_THINKING_STATUS,
             inProgress = false,
             side = message.side,
             accelerator = message.accelerator,
