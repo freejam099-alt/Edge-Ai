@@ -66,6 +66,7 @@ data class McpManagerUiState(
   val mcpServers: List<McpServerState> = emptyList(),
   val loadingMcpServer: Boolean = false,
   val error: String? = null,
+  val importSuccess: Boolean = false,
 )
 
 @HiltViewModel
@@ -256,9 +257,128 @@ constructor(
     }
   }
 
+  /** Parses and imports every declared server only after all servers connect successfully. */
+  fun importMcpServersFromJson(json: String) {
+    val parsed =
+      try {
+        McpServerJsonParser.parse(json)
+      } catch (e: McpServerJsonException) {
+        _uiState.update { it.copy(error = e.message, importSuccess = false, loadingMcpServer = false) }
+        return
+      } catch (_: Exception) {
+        _uiState.update {
+          it.copy(
+            error = "The MCP configuration is invalid. Check its fields and try again.",
+            importSuccess = false,
+            loadingMcpServer = false,
+          )
+        }
+        return
+      }
+
+    _uiState.update { it.copy(loadingMcpServer = true, error = null, importSuccess = false) }
+    viewModelScope.launch(Dispatchers.IO) {
+      try {
+        // Connect and discover every server before persisting anything, so a failed import is not
+        // partially visible or saved. Existing per-tool enable/always-allow settings are retained.
+        val currentStates = _uiState.value.mcpServers.associateBy { it.mcpServer.url }
+        val importedStates = parsed.map { declaration ->
+          val existing = currentStates[declaration.url]?.mcpServer
+          val savedTools = existing?.toolsList?.associate { it.name to it.enabled }
+          val savedAlwaysAllow = existing?.toolsList?.associate { it.name to it.alwaysAllow }
+          val auth = declaration.toAuth()
+          val (client, tools) =
+            initializeClientAndLoadTools(
+              declaration.url,
+              savedToolsMap = savedTools,
+              savedAlwaysAllowMap = savedAlwaysAllow,
+              mcpAuth = auth,
+            )
+          val server =
+            McpServer.newBuilder()
+              .setUrl(declaration.url)
+              .setName(declaration.name)
+              .addAllTools(tools)
+              .setEnabled(existing?.enabled ?: true)
+              .apply {
+                client.serverVersion?.version?.let { setVersion(it) }
+                val description = tools.joinToString(", ") { it.name }
+                if (description.isNotEmpty()) setDescription("Tools: $description")
+              }
+              .build()
+          McpServerState(mcpServer = server, client = client, error = null) to auth
+        }
+
+        val authUpdates = importedStates.associate { it.first.mcpServer.url to it.second }
+        val previousAuth = userDataDataStore.data.first().mcpAuthsMap
+        userDataDataStore.updateData { userData ->
+          userData.toBuilder().putAllMcpAuths(previousAuth + authUpdates).build()
+        }
+        try {
+          mcpServersDataStore.updateData { current ->
+            val urls = authUpdates.keys
+            val retained = current.mcpServerList.filterNot { it.url in urls }
+            McpServers.newBuilder()
+              .addAllMcpServer(retained + importedStates.map { it.first.mcpServer })
+              .build()
+          }
+        } catch (e: Exception) {
+          // Keep the two DataStores consistent if server persistence fails after auth persistence.
+          userDataDataStore.updateData { userData ->
+            val restored = userData.toBuilder()
+            authUpdates.keys.forEach { url ->
+              val prior = previousAuth[url]
+              if (prior == null) restored.removeMcpAuths(url) else restored.putMcpAuths(url, prior)
+            }
+            restored.build()
+          }
+          throw e
+        }
+
+        _uiState.update { state ->
+          val importedUrls = authUpdates.keys
+          state.copy(
+            mcpServers = state.mcpServers.filterNot { it.mcpServer.url in importedUrls } +
+              importedStates.map { it.first },
+            loadingMcpServer = false,
+            error = null,
+            importSuccess = true,
+          )
+        }
+        Log.d(TAG, "Analytics: mcp_management, action=import_json, status=success")
+        firebaseAnalytics?.logEvent(
+          GalleryEvent.MCP_MANAGEMENT.id,
+          Bundle().apply {
+            putString("action", "import_json")
+            putString("status", "success")
+          },
+        )
+      } catch (e: Exception) {
+        if (e is CancellationException) throw e
+        // Deliberately do not log exception text, URL, JSON or header values.
+        Log.w(TAG, "MCP JSON import failed (${e.javaClass.simpleName})")
+        _uiState.update {
+          it.copy(
+            loadingMcpServer = false,
+            importSuccess = false,
+            error = "Could not connect to or save the MCP server configuration. Nothing was imported.",
+          )
+        }
+        firebaseAnalytics?.logEvent(
+          GalleryEvent.MCP_MANAGEMENT.id,
+          Bundle().apply {
+            putString("action", "import_json")
+            putString("status", "failed")
+            putString("error_type", e.javaClass.simpleName)
+          },
+        )
+      }
+    }
+  }
+
   /** Clears any connection error. */
   fun clearError() {
-    _uiState.update { it.copy(error = null) }
+    _uiState.update { it.copy(error = null, importSuccess = false) }
   }
 
   /** Removes an MCP server by its URL from both the current UI state and persistent DataStore. */
@@ -414,7 +534,7 @@ constructor(
     savedAlwaysAllowMap: Map<String, Boolean>? = null,
     mcpAuth: McpAuth? = null,
   ): Pair<Client, List<McpTool>> {
-    Log.d(TAG, "Initializing MCP for $url...")
+    Log.d(TAG, "Initializing MCP connection...")
     val client =
       Client(
         clientInfo =
@@ -449,7 +569,7 @@ constructor(
           .setAlwaysAllow(isAlwaysAllow)
           .build()
       }
-    Log.d(TAG, "Loaded ${mcpTools.size} tools from $url: ${mcpTools.joinToString { it.name }}")
+    Log.d(TAG, "Loaded ${mcpTools.size} MCP tools")
     return Pair(client, mcpTools)
   }
 

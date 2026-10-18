@@ -577,6 +577,8 @@ fun ChatPanel(
                       is ChatMessageThinking ->
                         MessageBodyThinking(
                           inProgress = message.inProgress,
+                          content = message.content,
+                          isProviderSummary = message.isProviderSummary,
                         )
 
                       else -> {}

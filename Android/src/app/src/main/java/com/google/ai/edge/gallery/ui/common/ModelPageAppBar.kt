@@ -22,8 +22,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.ArrowDropDown
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Tune
@@ -33,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -65,6 +69,12 @@ import com.google.ai.edge.gallery.data.ModelUtils
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.data.convertValueToTargetType
 import com.google.ai.edge.gallery.firebaseAnalytics
+import com.google.ai.edge.gallery.ui.home.CLOUD_MODEL_KEY
+import com.google.ai.edge.gallery.ui.home.CLOUD_TEXT_MODEL_KEY
+import com.google.ai.edge.gallery.ui.home.CLOUD_PROVIDER_KEY
+import com.google.ai.edge.gallery.ui.home.CLOUD_PROVIDER_GEMINI
+import com.google.ai.edge.gallery.ui.home.cloudModelDisplayName
+import com.google.ai.edge.gallery.ui.home.defaultCloudTextModel
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.litertlm.ModelInfo
 import kotlinx.coroutines.CancellationException
@@ -135,11 +145,32 @@ fun ModelPageAppBar(
 
         // Model chips pager.
         if (isCloudAgent) {
-          Text(
-            "Cloud model",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-          )
+          val repository = modelManagerViewModel.dataStoreRepository
+          val provider = repository.readSecret(CLOUD_PROVIDER_KEY) ?: CLOUD_PROVIDER_GEMINI
+          val modelId = repository.readSecret(CLOUD_TEXT_MODEL_KEY)
+            ?: repository.readSecret(CLOUD_MODEL_KEY) ?: defaultCloudTextModel(provider)
+          Surface(
+            onClick = onCloudSettingsClicked,
+            enabled = showCloudSettingsButton && !inProgress,
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+          ) {
+            Row(
+              modifier = Modifier.padding(start = 12.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+              Text(
+                cloudModelDisplayName(modelId).ifBlank { "Choose model" },
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+              )
+              Icon(Icons.Rounded.ArrowDropDown, contentDescription = "Model settings", modifier = Modifier.size(16.dp))
+            }
+          }
         } else if (!hideModelSelector) {
           val enableModelPickerChip = !isModelInitializing && !inProgress
           ModelPickerChip(

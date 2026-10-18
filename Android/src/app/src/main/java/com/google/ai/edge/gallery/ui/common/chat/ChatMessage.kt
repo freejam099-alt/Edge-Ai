@@ -439,6 +439,8 @@ class ChatMessageCollapsableProgressPanel(
 class ChatMessageThinking(
   val content: String,
   val inProgress: Boolean,
+  /** True only for summary text received in an explicitly summary-typed provider field. */
+  val isProviderSummary: Boolean = false,
   override val side: ChatSide = ChatSide.AGENT,
   override val hideSenderLabel: Boolean = false,
   override val accelerator: String = "",
@@ -454,6 +456,7 @@ class ChatMessageThinking(
     return ChatMessageThinking(
       content = content,
       inProgress = inProgress,
+      isProviderSummary = isProviderSummary,
       side = side,
       hideSenderLabel = hideSenderLabel,
       accelerator = accelerator,

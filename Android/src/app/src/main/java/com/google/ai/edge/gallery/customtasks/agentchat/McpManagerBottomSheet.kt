@@ -120,6 +120,8 @@ fun McpManagerBottomSheet(
 
   var searchQuery by remember { mutableStateOf("") }
   var showAddMcpServerDialog by remember { mutableStateOf(false) }
+  var showAddMcpServerChoiceDialog by remember { mutableStateOf(false) }
+  var showImportMcpServersJsonDialog by remember { mutableStateOf(false) }
   var showDeleteServerDialog by remember { mutableStateOf(false) }
   var serverToDeleteUrl by remember { mutableStateOf("") }
   var serverForToolsUrl by remember { mutableStateOf<String?>(null) }
@@ -176,7 +178,7 @@ fun McpManagerBottomSheet(
               GalleryEvent.MCP_MANAGEMENT.id,
               Bundle().apply { putString("action", "open_add_server") },
             )
-            showAddMcpServerDialog = true
+            showAddMcpServerChoiceDialog = true
           },
           onDismiss = {
             scope.launch {
@@ -276,7 +278,7 @@ fun McpManagerBottomSheet(
                       GalleryEvent.MCP_MANAGEMENT.id,
                       Bundle().apply { putString("action", "open_add_server") },
                     )
-                    showAddMcpServerDialog = true
+                    showAddMcpServerChoiceDialog = true
                   }
                   .background(MaterialTheme.colorScheme.primary),
               contentAlignment = Alignment.Center,
@@ -386,6 +388,27 @@ fun McpManagerBottomSheet(
           }
         }
       },
+    )
+  }
+
+  if (showAddMcpServerChoiceDialog) {
+    AddMcpServerChoiceDialog(
+      onDismiss = { showAddMcpServerChoiceDialog = false },
+      onAddByUrl = {
+        showAddMcpServerChoiceDialog = false
+        showAddMcpServerDialog = true
+      },
+      onImportJson = {
+        showAddMcpServerChoiceDialog = false
+        showImportMcpServersJsonDialog = true
+      },
+    )
+  }
+
+  if (showImportMcpServersJsonDialog) {
+    AddMcpServersFromJsonDialog(
+      mcpManagerViewModel = mcpManagerViewModel,
+      onDismissRequest = { showImportMcpServersJsonDialog = false },
     )
   }
 

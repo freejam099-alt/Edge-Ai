@@ -83,16 +83,20 @@ object ChatMessageMapper {
             accelerator = protoMsg.accelerator,
             hideSenderLabel = protoMsg.hideSenderLabel,
           )
-        "THINKING" ->
+        "THINKING" -> {
+          // Older sessions may contain provider reasoning. Only trust the explicit new tag.
+          val trustedSummary = protoMsg.isProviderSummary
+          val content = if (trustedSummary) protoMsg.content else GENERIC_THINKING_STATUS
           if (protoMsg.content.trim().equals("null", ignoreCase = true) ||
             (protoMsg.content.isBlank() && !protoMsg.inProgress)) null else ChatMessageThinking(
-            // Older sessions may contain provider reasoning. Discard it on restore.
-            content = GENERIC_THINKING_STATUS,
+            content = content,
             side = side,
             inProgress = protoMsg.inProgress,
+            isProviderSummary = trustedSummary,
             accelerator = protoMsg.accelerator,
             hideSenderLabel = protoMsg.hideSenderLabel,
           )
+        }
         "INFO" -> ChatMessageInfo(protoMsg.content)
         "WARNING" -> ChatMessageWarning(protoMsg.content)
         "ERROR" -> ChatMessageError(protoMsg.content)
@@ -207,9 +211,10 @@ object ChatMessageMapper {
         is ChatMessageThinking -> {
           builder
             .setMessageType("THINKING")
-            .setContent(GENERIC_THINKING_STATUS)
+            .setContent(if (msg.isProviderSummary) msg.content else GENERIC_THINKING_STATUS)
             .setSide(mapChatSide(msg.side))
             .setInProgress(msg.inProgress)
+            .setIsProviderSummary(msg.isProviderSummary)
             .setAccelerator(msg.accelerator)
             .setHideSenderLabel(msg.hideSenderLabel)
         }

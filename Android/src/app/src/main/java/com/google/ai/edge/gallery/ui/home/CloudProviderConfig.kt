@@ -35,6 +35,39 @@ const val CLOUD_PROVIDER_DEEPSEEK = "deepseek"
 const val CLOUD_PROVIDER_QWEN = "qwen"
 const val CLOUD_PROVIDER_ANTHROPIC = "anthropic"
 const val CLOUD_PROVIDER_CUSTOM = "custom"
+const val CLOUD_PROVIDER_EAY = "eay"
+
+/** Curated EAY model choices; labels are presentation-only and IDs are sent unchanged. */
+data class CloudModelPreset(val label: String, val id: String)
+
+val EAY_MODEL_PRESETS = listOf(
+  CloudModelPreset("Wiki lite", "eay/gemini-3-flash-preview"),
+  CloudModelPreset("Wiki flash", "eay/gemini-3.1-flash-lite"),
+  CloudModelPreset("Wiki Pro", "eay/gemini-3.1-pro-preview"),
+)
+
+fun cloudModelDisplayName(modelId: String): String =
+  EAY_MODEL_PRESETS.firstOrNull { it.id == modelId }?.label ?: modelId
+
+fun cloudModelDisplayName(providerId: String, modelId: String): String =
+  if (providerId == CLOUD_PROVIDER_EAY) cloudModelDisplayName(modelId) else modelId
+
+/** Produces ordered choices for the compact default-model picker without changing request IDs. */
+fun cloudModelPickerChoices(
+  providerId: String,
+  fetchedModelIds: List<String>,
+  query: String,
+): List<CloudModelPreset> {
+  val choices = if (providerId == CLOUD_PROVIDER_EAY) {
+    EAY_MODEL_PRESETS
+  } else {
+    fetchedModelIds.distinct().map { CloudModelPreset(it, it) }
+  }
+  val normalizedQuery = query.trim().lowercase()
+  return if (normalizedQuery.isEmpty()) choices else choices.filter {
+    it.label.lowercase().contains(normalizedQuery) || it.id.lowercase().contains(normalizedQuery)
+  }
+}
 
 const val CLOUD_PROVIDER_KEY = "cloud_provider_id"
 const val CLOUD_ENDPOINT_KEY = "cloud_provider_endpoint"
@@ -59,6 +92,7 @@ fun defaultCloudProtocol(providerId: String): String = when (providerId) {
 
 fun defaultCloudEndpoint(providerId: String): String =
   when (providerId) {
+    CLOUD_PROVIDER_EAY -> "https://api.eay.my.id/v1"
     CLOUD_PROVIDER_OPENAI_COMPATIBLE -> "https://api.openai.com/v1"
     CLOUD_PROVIDER_OPENROUTER -> "https://openrouter.ai/api/v1"
     CLOUD_PROVIDER_GROQ -> "https://api.groq.com/openai/v1"
@@ -71,6 +105,7 @@ fun defaultCloudEndpoint(providerId: String): String =
 
 fun defaultCloudTextModel(providerId: String): String =
   when (providerId) {
+    CLOUD_PROVIDER_EAY -> ""
     CLOUD_PROVIDER_OPENAI_COMPATIBLE -> "gpt-4o-mini"
     CLOUD_PROVIDER_OPENROUTER -> "openai/gpt-4o-mini"
     CLOUD_PROVIDER_GROQ -> "llama-3.3-70b-versatile"
@@ -92,6 +127,7 @@ fun defaultCloudImageModel(providerId: String): String =
 fun supportsCloudThinkingEffort(providerId: String, modelId: String): Boolean {
   val id = modelId.trim().lowercase()
   if (id.isEmpty()) return false
+  if (providerId == CLOUD_PROVIDER_EAY) return EAY_MODEL_PRESETS.any { it.id == id }
   return when (providerId) {
     CLOUD_PROVIDER_GEMINI ->
       id.startsWith("gemini-2.5") || id.startsWith("gemini-3") || "thinking" in id

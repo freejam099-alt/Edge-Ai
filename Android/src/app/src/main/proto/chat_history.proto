@@ -55,6 +55,8 @@ message ChatMessageProto {
   // Optional persona identifier (e.g., "buddy", "professor") for persona-based
   // tasks.
   string persona_id = 11;
+  // True only when content is an explicitly typed provider summary, never raw reasoning.
+  bool is_provider_summary = 12;
 }
 
 // Represents an audio recording associated with a chat session message.

@@ -66,6 +66,34 @@ class ChatMessagePresentationTest {
     assertEquals(GENERIC_THINKING_STATUS, proto.content)
   }
   @Test
+  fun onlyTaggedProviderSummarySurvivesPersistence() = runBlocking {
+    val summary = ChatMessageThinking(
+      "A provider-authored summary.",
+      inProgress = false,
+      isProviderSummary = true,
+    )
+    val saved = ChatMessageMapper.serializeMessage(summary, "test", dispatcher = Dispatchers.Unconfined)!!
+    assertEquals("A provider-authored summary.", saved.content)
+    assertTrue(saved.isProviderSummary)
+
+    val restored = ChatMessageMapper.deserializeProtoMessage(saved, Dispatchers.Unconfined) as ChatMessageThinking
+    assertEquals("A provider-authored summary.", restored.content)
+    assertTrue(restored.isProviderSummary)
+
+    val untrusted = ChatMessageMapper.deserializeProtoMessage(
+      ChatMessageProto.newBuilder()
+        .setMessageType("THINKING")
+        .setContent("old private reasoning")
+        .setSide(ChatSideProto.CHAT_SIDE_MODEL)
+        .setInProgress(false)
+        .build(),
+      Dispatchers.Unconfined,
+    ) as ChatMessageThinking
+    assertEquals(GENERIC_THINKING_STATUS, untrusted.content)
+    assertFalse(untrusted.isProviderSummary)
+  }
+
+  @Test
   fun restoringEmptyOrNullThinkingDropsTheCard() = runBlocking {
     listOf("", " ", "null", " NULL ").forEach { content ->
       val proto = ChatMessageProto.newBuilder().setMessageType("THINKING")

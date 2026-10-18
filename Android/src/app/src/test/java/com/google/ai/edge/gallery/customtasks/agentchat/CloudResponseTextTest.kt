@@ -32,6 +32,39 @@ class CloudResponseTextTest {
     assertFalse(statuses.joinToString().contains("private analysis"))
   }
 
+  @Test fun onlyExplicitSummaryFieldsAreStreamedAndRawReasoningIsIgnored() {
+    val parser = OpenAiStreamAccumulator()
+    val answers = StringBuilder()
+    val statuses = mutableListOf<String>()
+    val summaries = mutableListOf<String>()
+    listOf(
+      """{"content":null,"reasoning_content":"private text","reasoning":"ambiguous","thinking_delta":"raw","thought":true}""",
+      """{"reasoning_summary":"A brief "}""",
+      """{"content":[{"type":"summary_text","text":"summary."},{"type":"text","text":"not a summary"}]}""",
+      """{"content":"Answer."}""",
+    ).forEach { delta ->
+      parser.add(
+        JSONObject("""{"choices":[{"delta":$delta}]}"""),
+        { answers.append(it) },
+        { statuses.add(it) },
+        { summaries.add(it) },
+      )
+    }
+    assertEquals("Answer.", answers.toString())
+    assertEquals(listOf("A brief ", "summary."), summaries)
+    assertEquals(listOf(CLOUD_PROCESSING_STATUS), statuses)
+    assertFalse(summaries.joinToString().contains("private text"))
+    assertFalse(answers.toString().contains("private text"))
+  }
+
+  @Test fun summaryPartMustCarryExactExplicitType() {
+    val parser = OpenAiStreamAccumulator()
+    val summaries = mutableListOf<String>()
+    val delta = JSONObject("""{"content":[{"type":"reasoning","text":"private"},{"type":"text","text":"answer"},{"type":"summary_text","text":"public summary"}]}""")
+    parser.add(JSONObject().put("choices", org.json.JSONArray().put(JSONObject().put("delta", delta))), {}, {}, summaries::add)
+    assertEquals(listOf("public summary"), summaries)
+  }
+
   @Test fun nullOnlyDeltasDoNotEmitAnything() {
     val parser = OpenAiStreamAccumulator()
     val emitted = mutableListOf<String>()

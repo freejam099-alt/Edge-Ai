@@ -168,6 +168,11 @@ class CloudAgentRuntimeExecutor(
         }
       }
       val streamAnswer: (String) -> Unit = answerFilter::add
+      val streamProviderSummary: (String) -> Unit = { summary ->
+        if (summary.isNotEmpty() && !requestCancelled.get()) {
+          trySend(AgentEvent.StreamToken(token = "", providerSummary = summary))
+        }
+      }
       // Thinking is a lifecycle status only. Never persist private provider reasoning in chat.
       var processingShown = false
       val streamThinking: (String) -> Unit = { status ->
@@ -185,7 +190,7 @@ class CloudAgentRuntimeExecutor(
             "gemini" ->
               runGemini(providerConfig, config.systemInstruction.orEmpty(), history, request.query, imageParts, requestCancelled, streamAnswer, streamThinking)
             "openai" ->
-              runOpenAiCompatible(providerConfig, config.systemInstruction.orEmpty(), history, request.query, imageParts, requestCancelled, streamAnswer, streamThinking)
+              runOpenAiCompatible(providerConfig, config.systemInstruction.orEmpty(), history, request.query, imageParts, requestCancelled, streamAnswer, streamThinking, streamProviderSummary)
             "anthropic" ->
               runAnthropic(providerConfig, config.systemInstruction.orEmpty(), history, request.query, imageParts, requestCancelled, streamAnswer, streamThinking)
             else -> error("Unsupported API protocol. Choose OpenAI, Gemini, or Anthropic in settings.")
@@ -223,6 +228,7 @@ class CloudAgentRuntimeExecutor(
     requestCancelled: AtomicBoolean,
     streamAnswer: (String) -> Unit,
     streamThinking: (String) -> Unit,
+    streamProviderSummary: (String) -> Unit,
   ) {
     val messages = JSONArray()
     if (systemPrompt.isNotBlank()) {
@@ -250,7 +256,7 @@ class CloudAgentRuntimeExecutor(
       ) {
         body.put("reasoning_effort", config.thinkingEffort)
       }
-      val completion = openAiRequest(config, body, requestCancelled, streamAnswer, streamThinking)
+      val completion = openAiRequest(config, body, requestCancelled, streamAnswer, streamThinking, streamProviderSummary)
       if (completion.toolCalls.isEmpty()) return
       val callsArray = JSONArray()
       completion.toolCalls.forEachIndexed { index, call ->
@@ -456,6 +462,7 @@ class CloudAgentRuntimeExecutor(
     requestCancelled: AtomicBoolean,
     streamAnswer: (String) -> Unit,
     streamThinking: (String) -> Unit,
+    streamProviderSummary: (String) -> Unit,
   ): OpenAiCompletion {
     val endpoint = config.endpoint.trim().trimEnd('/')
     val requestUrl = if (endpoint.endsWith(OPENAI_CHAT_PATH)) endpoint else "$endpoint$OPENAI_CHAT_PATH"
@@ -480,7 +487,7 @@ class CloudAgentRuntimeExecutor(
           if (data == "[DONE]") return@readSseDataEvents
           val chunk = parseSseJson(data)
           throwIfStreamProviderError(chunk)
-          accumulator.add(chunk, streamAnswer, streamThinking)
+          accumulator.add(chunk, streamAnswer, streamThinking, streamProviderSummary)
         }
       }
       return accumulator.result()

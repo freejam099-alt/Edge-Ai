@@ -23,6 +23,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Column
@@ -34,6 +35,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -52,6 +54,8 @@ import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material3.Card
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -77,6 +81,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.PopupProperties
 import com.google.ai.edge.gallery.data.DataStoreRepository
 import kotlinx.coroutines.launch
 
@@ -91,6 +96,7 @@ private data class CloudProviderOption(
 
 private val cloudProviderOptions = listOf(
   CLOUD_PROVIDER_GEMINI to "Google Gemini API",
+  CLOUD_PROVIDER_EAY to "EAY",
   CLOUD_PROVIDER_OPENAI_COMPATIBLE to "OpenAI",
   CLOUD_PROVIDER_OPENROUTER to "OpenRouter",
   CLOUD_PROVIDER_GROQ to "Groq",
@@ -99,8 +105,9 @@ private val cloudProviderOptions = listOf(
   CLOUD_PROVIDER_ANTHROPIC to "Anthropic",
   CLOUD_PROVIDER_CUSTOM to "Custom endpoint",
 ).map { (id, label) ->
-  CloudProviderOption(id, label, defaultCloudEndpoint(id), defaultCloudTextModel(id),
+    CloudProviderOption(id, label, defaultCloudEndpoint(id), defaultCloudTextModel(id),
     defaultCloudImageModel(id), when (id) {
+      CLOUD_PROVIDER_EAY -> "OpenAI-compatible API; curated Wiki model presets"
       CLOUD_PROVIDER_GEMINI -> "Gemini API; image-capable models may be available"
       CLOUD_PROVIDER_OPENROUTER -> "OpenAI-compatible API; catalog is fetched live"
       CLOUD_PROVIDER_GROQ -> "OpenAI-compatible API; catalog is fetched live"
@@ -151,12 +158,15 @@ fun CloudProviderSettingsDialog(
   var protocol by remember { mutableStateOf(dataStoreRepository.readSecret(CLOUD_PROTOCOL_KEY) ?: defaultCloudProtocol(initialProvider.id)) }
   var fetchingModels by remember { mutableStateOf(false) }
   var fetchedModels by remember { mutableStateOf(emptyList<CloudModel>()) }
+  var modelSearch by remember { mutableStateOf("") }
+  var modelPickerExpanded by remember { mutableStateOf(false) }
   var fetchError by remember { mutableStateOf<String?>(null) }
   var fetchNotice by remember { mutableStateOf<String?>(null) }
   val coroutineScope = rememberCoroutineScope()
   val selectedProvider = cloudProviderOptions.first { it.id == providerId }
   val hasMatchingSavedKey = CloudApiKeyVault.hasSavedKeyFor(context, providerId, endpoint)
-  val canSave = endpoint.isNotBlank() && textModel.isNotBlank()
+  val canSave = endpoint.isNotBlank() && textModel.isNotBlank() &&
+    (providerId != CLOUD_PROVIDER_EAY || EAY_MODEL_PRESETS.any { it.id == textModel })
 
   BackHandler(onBack = onDismiss)
 
@@ -251,6 +261,8 @@ fun CloudProviderSettingsDialog(
                 apiKey = ""
                 removeSavedApiKey = false
                 fetchedModels = emptyList()
+                modelSearch = ""
+                modelPickerExpanded = false
                 fetchError = null
                 fetchNotice = null
                 saveError = null
@@ -300,12 +312,13 @@ fun CloudProviderSettingsDialog(
       SettingsSection(title = "Models", subtitle = "Configure distinct models for conversation and image generation.") {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
           OutlinedTextField(
-            value = textModel,
+            value = cloudModelDisplayName(providerId, textModel),
             onValueChange = { textModel = it; saveError = null },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
+            readOnly = providerId == CLOUD_PROVIDER_EAY,
             leadingIcon = { Icon(Icons.Rounded.TextFields, contentDescription = null) },
-            label = { Text("Text model ID") },
+            label = { Text(if (providerId == CLOUD_PROVIDER_EAY) "Chat model" else "Text model ID") },
             supportingText = { Text("Used for conversation and tool decisions") },
           )
           OutlinedTextField(
@@ -317,7 +330,7 @@ fun CloudProviderSettingsDialog(
             label = { Text("Image model ID") },
             supportingText = { Text("Optional; leave blank when this provider has no image model") },
           )
-          Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+          if (providerId != CLOUD_PROVIDER_EAY) Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Button(enabled = !fetchingModels && endpoint.isNotBlank() && (apiKey.isNotBlank() || hasMatchingSavedKey), onClick = {
               fetchingModels = true; fetchError = null; fetchNotice = null
               val key = apiKey.trim().ifBlank { CloudApiKeyVault.read(context, providerId, endpoint).orEmpty() }
@@ -334,10 +347,41 @@ fun CloudProviderSettingsDialog(
           }
           if (fetchError != null) Text(fetchError.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
           if (fetchNotice != null) Text(fetchNotice.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-          if (fetchedModels.isNotEmpty()) {
-            Text("Select a fetched text model", style = MaterialTheme.typography.labelLarge)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-              fetchedModels.forEach { model -> FilterChip(selected = textModel == model.id, onClick = { textModel = model.id }, label = { Text(model.id) }) }
+          if (providerId == CLOUD_PROVIDER_EAY || fetchedModels.isNotEmpty()) {
+            OutlinedTextField(
+              value = modelSearch,
+              onValueChange = { modelSearch = it; modelPickerExpanded = true },
+              modifier = Modifier.fillMaxWidth(),
+              singleLine = true,
+              label = { Text("Search models") },
+              placeholder = { Text("Search by name or model ID") },
+            )
+            Box {
+              TextButton(onClick = { modelPickerExpanded = true }) {
+                val selectedLabel = cloudModelDisplayName(providerId, textModel)
+                Text(if (textModel.isBlank()) "Choose default model" else "Default model: $selectedLabel")
+              }
+              DropdownMenu(
+                expanded = modelPickerExpanded,
+                onDismissRequest = { modelPickerExpanded = false },
+                modifier = Modifier.heightIn(max = 280.dp),
+                properties = PopupProperties(focusable = false),
+              ) {
+                val choices = cloudModelPickerChoices(providerId, fetchedModels.map { it.id }, modelSearch)
+                if (choices.isEmpty()) {
+                  DropdownMenuItem(text = { Text("No matching models") }, onClick = {}, enabled = false)
+                }
+                choices.forEach { choice ->
+                    DropdownMenuItem(
+                      text = { Text(choice.label) },
+                      onClick = {
+                        textModel = choice.id
+                        modelPickerExpanded = false
+                        saveError = null
+                      },
+                    )
+                  }
+              }
             }
           }
           Text(

@@ -247,6 +247,7 @@ open class LlmChatViewModelBase(
       val executionContext = AgentExecutionContext()
 
       var firstRun = true
+      var providerSummaryMessageIndex: Int? = null
       val start = System.currentTimeMillis()
 
       if (sessionStoppedByModel[model.name] == true) {
@@ -300,7 +301,8 @@ open class LlmChatViewModelBase(
 
             // A provider's thinking field is only a signal that processing is underway. Never
             // retain or display its contents; persisted thinking is always this generic status.
-            val hasThinkingStatus = !event.thinking.isNullOrBlank() &&
+            val hasThinkingStatus = providerSummaryMessageIndex == null &&
+              !event.thinking.isNullOrBlank() &&
               !event.thinking.trim().equals("null", ignoreCase = true)
             var currentLastMessage = getLastMessage(model = model)
 
@@ -338,7 +340,7 @@ open class LlmChatViewModelBase(
             } else {
               if (currentLastMessage?.type == ChatMessageType.THINKING) {
                 val thinkingMsg = currentLastMessage as ChatMessageThinking
-                if (thinkingMsg.inProgress) {
+                if (thinkingMsg.inProgress && !thinkingMsg.isProviderSummary) {
                   replaceLastMessage(
                     model = model,
                     message =
@@ -352,6 +354,62 @@ open class LlmChatViewModelBase(
                     type = ChatMessageType.THINKING,
                   )
                 }
+              }
+            }
+            val summaryChunk = event.providerSummary
+            if (!summaryChunk.isNullOrEmpty() && !summaryChunk.trim().equals("null", ignoreCase = true)) {
+              val messages = uiState.value.messagesByModel[model.name].orEmpty()
+              val index = providerSummaryMessageIndex
+              val existing = index?.let { messages.getOrNull(it) as? ChatMessageThinking }
+              if (existing != null && existing.isProviderSummary) {
+                replaceMessage(
+                  model = model,
+                  index = index!!,
+                  message = ChatMessageThinking(
+                    content = existing.content + summaryChunk,
+                    inProgress = !event.done,
+                    isProviderSummary = true,
+                    side = existing.side,
+                    accelerator = existing.accelerator,
+                    hideSenderLabel = existing.hideSenderLabel,
+                  ),
+                )
+              } else {
+                val last = getLastMessage(model)
+                val summary = ChatMessageThinking(
+                  content = summaryChunk,
+                  inProgress = !event.done,
+                  isProviderSummary = true,
+                  side = ChatSide.AGENT,
+                  accelerator = accelerator,
+                  hideSenderLabel = last?.type == ChatMessageType.COLLAPSABLE_PROGRESS_PANEL,
+                )
+                if (last is ChatMessageThinking && !last.isProviderSummary) {
+                  replaceLastMessage(model = model, message = summary, type = ChatMessageType.THINKING)
+                  providerSummaryMessageIndex = uiState.value.messagesByModel[model.name].orEmpty().lastIndex
+                } else {
+                  addMessage(model = model, message = summary)
+                  providerSummaryMessageIndex = uiState.value.messagesByModel[model.name].orEmpty().lastIndex
+                }
+              }
+            }
+            if (event.done) {
+              val index = providerSummaryMessageIndex
+              val messages = uiState.value.messagesByModel[model.name].orEmpty()
+              val summary = index?.let { messages.getOrNull(it) as? ChatMessageThinking }
+              if (summary?.isProviderSummary == true && summary.inProgress) {
+                replaceMessage(
+                  model = model,
+                  index = index!!,
+                  message = ChatMessageThinking(
+                    content = summary.content,
+                    inProgress = false,
+                    isProviderSummary = true,
+                    side = summary.side,
+                    accelerator = summary.accelerator,
+                    hideSenderLabel = summary.hideSenderLabel,
+                  ),
+                )
               }
             }
             currentLastMessage = getLastMessage(model = model)
@@ -467,8 +525,9 @@ open class LlmChatViewModelBase(
           model = model,
           index = index,
           message = ChatMessageThinking(
-            content = GENERIC_THINKING_STATUS,
+            content = if (message.isProviderSummary) message.content else GENERIC_THINKING_STATUS,
             inProgress = false,
+            isProviderSummary = message.isProviderSummary,
             side = message.side,
             accelerator = message.accelerator,
             hideSenderLabel = message.hideSenderLabel,
