@@ -42,7 +42,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.ai.edge.gallery.ui.home.galleryGlass
+import com.google.ai.edge.gallery.ui.theme.galleryGlass
 
 @Composable
 fun SquareDrawerItem(

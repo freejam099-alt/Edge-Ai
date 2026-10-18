@@ -63,7 +63,7 @@ import com.google.ai.edge.gallery.data.Model
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.ui.common.modelitem.StatusIcon
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
-import com.google.ai.edge.gallery.ui.home.galleryGlass
+import com.google.ai.edge.gallery.ui.theme.galleryGlass
 import dev.mttmcknn.seaglass.SeaGlassShape
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -69,7 +69,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -132,39 +131,11 @@ import com.google.ai.edge.gallery.ui.common.tos.AppTosDialog
 import com.google.ai.edge.gallery.ui.common.tos.TosViewModel
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.customColors
+import com.google.ai.edge.gallery.ui.theme.galleryGlass
 import dev.mttmcknn.seaglass.SeaGlassShape
-import dev.mttmcknn.seaglass.SeaGlassStyle
 import dev.mttmcknn.seaglass.SeaGlassTheme
-import dev.mttmcknn.seaglass.seaGlass
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-/** Applies one stable Sea Glass material to this layout without changing its interaction semantics. */
-@Composable
-fun Modifier.galleryGlass(seed: Int, shape: SeaGlassShape = SeaGlassShape.Rounded): Modifier =
-  seaGlass(
-    style = SeaGlassStyle.Reference.copy(seed = seed),
-    palette = SeaGlassTheme.palette,
-    shape = shape,
-  )
-
-/** A compact accessible icon action using the active Sea Glass palette. */
-@Composable
-fun GalleryGlassIconButton(
-  onClick: () -> Unit,
-  icon: ImageVector,
-  contentDescription: String,
-  modifier: Modifier = Modifier,
-  enabled: Boolean = true,
-) {
-  IconButton(
-    onClick = onClick,
-    enabled = enabled,
-    modifier = modifier.size(48.dp).galleryGlass(contentDescription.hashCode(), SeaGlassShape.Disc),
-  ) {
-    Icon(icon, contentDescription = contentDescription, tint = SeaGlassTheme.palette.ink)
-  }
-}
 
 private const val TAG = "AGHomeScreen"
 private const val TASK_COUNT_ANIMATION_DURATION = 250

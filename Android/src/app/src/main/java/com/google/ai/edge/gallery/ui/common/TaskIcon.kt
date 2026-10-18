@@ -41,7 +41,7 @@ import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.mttmcknn.seaglass.SeaGlassShape
-import dev.mttmcknn.seaglass.SeaGlassStyle
+import com.google.ai.edge.gallery.ui.theme.GalleryGlassRecipe
 import dev.mttmcknn.seaglass.SeaGlassTheme
 import dev.mttmcknn.seaglass.seaGlass
 import com.google.ai.edge.gallery.R
@@ -88,7 +88,7 @@ fun TaskIcon(
       Box(
         modifier =
           Modifier.fillMaxSize().seaGlass(
-            style = SeaGlassStyle.Reference.copy(seed = task.id.hashCode()),
+            style = GalleryGlassRecipe.copy(seed = task.id.hashCode()),
             palette = palette,
             shape = SeaGlassShape.Disc,
           ),
