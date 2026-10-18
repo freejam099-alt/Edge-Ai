@@ -40,6 +40,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import dev.mttmcknn.seaglass.SeaGlassShape
+import dev.mttmcknn.seaglass.SeaGlassStyle
+import dev.mttmcknn.seaglass.SeaGlassTheme
+import dev.mttmcknn.seaglass.seaGlass
 import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.data.Task
 
@@ -65,6 +69,7 @@ fun TaskIcon(
   modifier: Modifier = Modifier,
   width: Dp = 56.dp,
   animationProgress: Float = 1f,
+  glassBackdrop: Boolean = false,
 ) {
   val revealingBrush =
     linearGradient(
@@ -75,6 +80,31 @@ fun TaskIcon(
         )
     )
   Box(modifier = modifier.width(width).aspectRatio(1f), contentAlignment = Alignment.Center) {
+    val icon = task.icon ?: ImageVector.vectorResource(task.iconVectorResourceId!!)
+    val iconAnimationProgress =
+      if (animationProgress >= 0.8f) (animationProgress - 0.8f) / 0.2f else 0f
+    if (glassBackdrop) {
+      val palette = SeaGlassTheme.palette
+      Box(
+        modifier =
+          Modifier.fillMaxSize().seaGlass(
+            style = SeaGlassStyle.Reference.copy(seed = task.id.hashCode()),
+            palette = palette,
+            shape = SeaGlassShape.Disc,
+          ),
+        contentAlignment = Alignment.Center,
+      ) {
+        Icon(
+          icon,
+          tint = palette.ink,
+          modifier =
+            Modifier.size(width * 0.55f)
+              .graphicsLayer { alpha = iconAnimationProgress }
+              .scale(iconAnimationProgress),
+          contentDescription = null,
+        )
+      }
+    } else {
     val brush = linearGradient(colors = getTaskBgGradientColors(task = task))
     Image(
       painter = getTaskIconBgShape(task = task),
@@ -95,12 +125,8 @@ fun TaskIcon(
           },
       contentScale = ContentScale.FillHeight,
     )
-    var iconAnimationProgress = 0f
-    if (animationProgress >= 0.8) {
-      iconAnimationProgress = (animationProgress - 0.8f) / 0.2f
-    }
     Icon(
-      task.icon ?: ImageVector.vectorResource(task.iconVectorResourceId!!),
+      icon,
       tint = Color.White,
       modifier =
         Modifier.size(width * 0.55f)
@@ -108,6 +134,7 @@ fun TaskIcon(
           .scale(iconAnimationProgress),
       contentDescription = null,
     )
+    }
   }
 }
 

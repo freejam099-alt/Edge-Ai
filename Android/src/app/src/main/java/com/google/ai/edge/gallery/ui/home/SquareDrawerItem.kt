@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.ai.edge.gallery.ui.home.galleryGlass
 
 @Composable
 fun SquareDrawerItem(
@@ -56,6 +57,7 @@ fun SquareDrawerItem(
     modifier =
       modifier
         .aspectRatio(1f)
+        .galleryGlass(label.hashCode())
         .clip(RoundedCornerShape(24.dp))
         .clickable { onClick() }
         .border(

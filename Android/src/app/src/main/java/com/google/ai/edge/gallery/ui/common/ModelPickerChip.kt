@@ -21,7 +21,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -64,6 +63,8 @@ import com.google.ai.edge.gallery.data.Model
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.ui.common.modelitem.StatusIcon
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
+import com.google.ai.edge.gallery.ui.home.galleryGlass
+import dev.mttmcknn.seaglass.SeaGlassShape
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -96,7 +97,7 @@ fun ModelPickerChip(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         modifier =
           Modifier.clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .galleryGlass(initialModel.name.hashCode(), SeaGlassShape.Capsule)
             .clickable(enabled = enabled) {
               modelPickerModel = initialModel
               showModelPicker = true

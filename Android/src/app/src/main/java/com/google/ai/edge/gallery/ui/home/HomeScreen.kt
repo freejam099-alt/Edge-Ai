@@ -69,6 +69,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -131,8 +132,39 @@ import com.google.ai.edge.gallery.ui.common.tos.AppTosDialog
 import com.google.ai.edge.gallery.ui.common.tos.TosViewModel
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.customColors
+import dev.mttmcknn.seaglass.SeaGlassShape
+import dev.mttmcknn.seaglass.SeaGlassStyle
+import dev.mttmcknn.seaglass.SeaGlassTheme
+import dev.mttmcknn.seaglass.seaGlass
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+/** Applies one stable Sea Glass material to this layout without changing its interaction semantics. */
+@Composable
+fun Modifier.galleryGlass(seed: Int, shape: SeaGlassShape = SeaGlassShape.Rounded): Modifier =
+  seaGlass(
+    style = SeaGlassStyle.Reference.copy(seed = seed),
+    palette = SeaGlassTheme.palette,
+    shape = shape,
+  )
+
+/** A compact accessible icon action using the active Sea Glass palette. */
+@Composable
+fun GalleryGlassIconButton(
+  onClick: () -> Unit,
+  icon: ImageVector,
+  contentDescription: String,
+  modifier: Modifier = Modifier,
+  enabled: Boolean = true,
+) {
+  IconButton(
+    onClick = onClick,
+    enabled = enabled,
+    modifier = modifier.size(48.dp).galleryGlass(contentDescription.hashCode(), SeaGlassShape.Disc),
+  ) {
+    Icon(icon, contentDescription = contentDescription, tint = SeaGlassTheme.palette.ink)
+  }
+}
 
 private const val TAG = "AGHomeScreen"
 private const val TASK_COUNT_ANIMATION_DURATION = 250
@@ -737,10 +769,12 @@ private fun CategoryTabHeader(
         modifier =
           Modifier.height(40.dp)
             .clip(CircleShape)
-            .background(
-              color =
-                if (selectedIndex == index) MaterialTheme.customColors.tabHeaderBgColor
-                else Color.Transparent
+            .then(
+              if (selectedIndex == index) {
+                Modifier.galleryGlass(category.id.hashCode(), SeaGlassShape.Capsule)
+              } else {
+                Modifier
+              }
             )
             .selectable(
               selected = (selectedIndex == index),
@@ -773,7 +807,8 @@ private fun CategoryTabHeader(
           modifier = Modifier.padding(horizontal = 16.dp),
           style = MaterialTheme.typography.labelLarge,
           color =
-            if (selectedIndex == index) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+            if (selectedIndex == index) SeaGlassTheme.palette.ink
+            else MaterialTheme.colorScheme.onSurfaceVariant,
         )
       }
     }
@@ -966,6 +1001,7 @@ private fun TaskCard(
   Card(
     modifier =
       modifier
+        .then(if (square) Modifier else Modifier.galleryGlass(task.id.hashCode()))
         .clip(RoundedCornerShape(24.dp))
         .clickable(onClick = onClick)
         .graphicsLayer { alpha = progress }
@@ -973,7 +1009,11 @@ private fun TaskCard(
           contentDescription = cbTask
           role = Role.Button
         },
-    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+    colors =
+      CardDefaults.cardColors(
+        containerColor =
+          if (square) MaterialTheme.colorScheme.surfaceContainer else Color.Transparent
+      ),
   ) {
     if (square) {
       Column(
@@ -1010,7 +1050,7 @@ private fun TaskCard(
         horizontalArrangement = Arrangement.SpaceBetween,
       ) {
         // Icon.
-        TaskIcon(task = task, width = 40.dp)
+        TaskIcon(task = task, width = 40.dp, glassBackdrop = true)
 
         // Title and description.
         Column(modifier = Modifier.weight(1f).padding(start = 16.dp)) {

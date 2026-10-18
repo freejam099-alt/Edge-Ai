@@ -40,7 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.google.ai.edge.gallery.ui.common.ThinkingOrb
+import com.google.ai.edge.gallery.ui.common.RotationalLoader
 
 @Composable
 fun MessageBodyThinking(
@@ -60,7 +60,9 @@ fun MessageBodyThinking(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
       ) {
-        ThinkingOrb(size = 20.dp, active = inProgress && !isProviderSummary)
+        if (inProgress && !isProviderSummary) {
+          RotationalLoader(size = 20.dp)
+        }
         Column(modifier = Modifier.weight(1f).padding(horizontal = 8.dp)) {
           Text(
             text = if (isProviderSummary) "Provider summary" else "Response status",

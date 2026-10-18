@@ -379,7 +379,7 @@ fun CloudProviderSettingsDialog(
               }
             }) {
               Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (fetchingModels) RotationalLoader(size = 16.dp)
+                if (fetchingModels) RotationalLoader(size = 16.dp, color = MaterialTheme.colorScheme.onPrimary)
                 Text(if (fetchingModels) "Fetching…" else "Fetch models")
               }
             }

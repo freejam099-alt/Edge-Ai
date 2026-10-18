@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.google.ai.edge.gallery.R
+import com.google.ai.edge.gallery.ui.common.RotationalLoader
 
 /**
  * Composable function to display a visual indicator for model initialization status.
@@ -62,9 +62,8 @@ fun ModelInitializationStatusChip() {
         verticalAlignment = Alignment.CenterVertically,
       ) {
         // Circular progress indicator.
-        CircularProgressIndicator(
-          modifier = Modifier.size(14.dp),
-          strokeWidth = 2.dp,
+        RotationalLoader(
+          size = 14.dp,
           color = MaterialTheme.colorScheme.onSecondaryContainer,
         )
 
