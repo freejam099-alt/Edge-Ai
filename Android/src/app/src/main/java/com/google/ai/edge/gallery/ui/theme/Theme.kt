@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.google.ai.edge.gallery.proto.Theme
+import dev.mttmcknn.seaglass.SeaGlassMaterialTheme
 
 private val lightScheme =
   lightColorScheme(
@@ -157,7 +158,7 @@ val LocalCustomColors = staticCompositionLocalOf { CustomColors() }
 
 val lightCustomColors =
   CustomColors(
-    appTitleGradientColors = listOf(Color(0xFF85B1F8), Color(0xFF3174F1)),
+    appTitleGradientColors = listOf(Color(0xFF82B9BC), Color(0xFF315F69)),
     tabHeaderBgColor = Color(0xFF3174F1),
     taskCardBgColor = surfaceContainerLowestLight,
     taskBgColors =
@@ -194,10 +195,10 @@ val lightCustomColors =
         Color(0xFFCAA12A),
       ),
     taskIconShapeBgColor = Color.White,
-    homeBottomGradient = listOf(Color(0x00F8F9FF), Color(0xffFFEFC9)),
-    agentBubbleBgColor = Color(0xFFe9eef6),
-    userBubbleBgColor = Color(0xFF32628D),
-    linkColor = Color(0xFF32628D),
+    homeBottomGradient = listOf(Color(0x00F5F8F7), Color(0xFFDCEEE7)),
+    agentBubbleBgColor = surfaceContainerLowLight,
+    userBubbleBgColor = primaryLight,
+    linkColor = primaryLight,
     successColor = Color(0xff3d860b),
     positiveStrokeColor = Color(0xff3d860b),
     negativeStrokeColor = Color(0xffd93025),
@@ -240,7 +241,7 @@ val lightCustomColors =
 
 val darkCustomColors =
   CustomColors(
-    appTitleGradientColors = listOf(Color(0xFF85B1F8), Color(0xFF3174F1)),
+    appTitleGradientColors = listOf(Color(0xFF82B9BC), Color(0xFF315F69)),
     tabHeaderBgColor = Color(0xFF3174F1),
     taskCardBgColor = surfaceContainerHighDark,
     taskBgColors =
@@ -277,10 +278,10 @@ val darkCustomColors =
         Color(0xFFCAA12A),
       ),
     taskIconShapeBgColor = Color(0xFF202124),
-    homeBottomGradient = listOf(Color(0x00F8F9FF), Color(0x1AF6AD01)),
-    agentBubbleBgColor = Color(0xFF1b1c1d),
-    userBubbleBgColor = Color(0xFF1f3760),
-    linkColor = Color(0xFF9DCAFC),
+    homeBottomGradient = listOf(Color(0x0010191D), Color(0x30284B55)),
+    agentBubbleBgColor = surfaceContainerLowDark,
+    userBubbleBgColor = primaryContainerDark,
+    linkColor = primaryDark,
     successColor = Color(0xFFA1CE83),
     positiveStrokeColor = Color(0xff3d860b),
     negativeStrokeColor = Color(0xffd93025),
@@ -356,7 +357,9 @@ fun GalleryTheme(content: @Composable () -> Unit) {
   val customColorsPalette = if (darkTheme) darkCustomColors else lightCustomColors
 
   CompositionLocalProvider(LocalCustomColors provides customColorsPalette) {
-    MaterialTheme(colorScheme = colorScheme, typography = AppTypography, content = content)
+    MaterialTheme(colorScheme = colorScheme, typography = AppTypography) {
+      SeaGlassMaterialTheme(style = GalleryGlassRecipe, content = content)
+    }
   }
 
   // Make sure the navigation bar stays transparent on manual theme changes.

@@ -46,6 +46,9 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.lifecycle.awaitInstance
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -138,6 +141,8 @@ import com.google.ai.edge.gallery.data.Model
 import com.google.ai.edge.gallery.data.SAMPLE_RATE
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.ui.theme.bodyLargeNarrow
+import com.google.ai.edge.gallery.ui.theme.GalleryGlassIconButton
+import com.google.ai.edge.gallery.ui.theme.galleryGlass
 import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -396,7 +401,8 @@ fun MessageInputText(
               modifier =
                 Modifier.padding(horizontal = 12.dp)
                   .padding(vertical = 8.dp)
-                  .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
+                  .galleryGlass(seed = 201)
+                  .animateContentSize(spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium))
             ) {
               // First row: text field for input.
               Row(
@@ -440,25 +446,10 @@ fun MessageInputText(
                   // A plus button to show a popup menu to add stuff to the chat.
                   Box() {
                     val enableAddButton = !inProgress && !isResettingSession && !modelInitializing
-                    OutlinedIconButton(
-                      modifier = Modifier.size(40.dp),
+                    GalleryGlassIconButton(
                       enabled = enableAddButton,
                       onClick = { showAddContentMenu = true },
-                      colors =
-                        IconButtonDefaults.iconButtonColors(
-                          disabledContentColor =
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
-                        ),
-                      border =
-                        IconButtonDefaults.outlinedIconButtonBorder(true)
-                          .copy(
-                            brush =
-                              SolidColor(
-                                MaterialTheme.colorScheme.outlineVariant.copy(
-                                  alpha = if (enableAddButton) 1f else 0.1f
-                                )
-                              )
-                          ),
+                      seed = 202,
                     ) {
                       Icon(
                         Icons.Outlined.Add,
@@ -769,12 +760,9 @@ fun MessageInputText(
                 // Stop button.
                 if (inProgress && showStopButtonWhenInProgress) {
                   if (!modelInitializing && !modelPreparing) {
-                    IconButton(
+                    GalleryGlassIconButton(
                       onClick = onStopButtonClicked,
-                      colors =
-                        IconButtonDefaults.iconButtonColors(
-                          containerColor = MaterialTheme.colorScheme.secondaryContainer
-                        ),
+                      seed = 204,
                     ) {
                       Icon(
                         Icons.Rounded.Stop,
@@ -786,7 +774,7 @@ fun MessageInputText(
                 }
                 // Send button.
                 else {
-                  IconButton(
+                  GalleryGlassIconButton(
                     enabled =
                       !inProgress &&
                         !isResettingSession &&
@@ -804,17 +792,12 @@ fun MessageInputText(
                       pickedImages = emptyList()
                       pickedAudioClips = emptyList()
                     },
-                    colors =
-                      IconButtonDefaults.iconButtonColors(
-                        containerColor = Color(0xFFC8A53A),
-                        disabledContainerColor = Color(0xFFC8A53A).copy(alpha = 0.38f),
-                      ),
+                    seed = 203,
                   ) {
                     Icon(
                       Icons.AutoMirrored.Rounded.Send,
                       contentDescription = stringResource(R.string.cd_send_prompt_icon),
                       modifier = Modifier.offset(x = 2.dp),
-                      tint = Color.White,
                     )
                   }
                 }

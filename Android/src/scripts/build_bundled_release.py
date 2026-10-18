@@ -17,8 +17,8 @@ import zipfile
 def main():
     android_root = Path(__file__).resolve().parents[1]
     repository = android_root.parents[1]
-    destination = repository.parent / "Edge-Ai-v1.0.25-arm64-wiki-ready.apk"
-    log = repository.parent / "edge-ai-v1.0.25-bundled-build.log"
+    destination = repository.parent / "Edge-Ai-v1.0.26-arm64-sea-glass.apk"
+    log = repository.parent / "edge-ai-v1.0.26-sea-glass-build.log"
     provided_file = os.environ.get("EAY_API_KEY_FILE")
     key = os.environ.pop("EAY_LOCAL_BUILD_CREDENTIAL", "").strip()
     if not key and provided_file:

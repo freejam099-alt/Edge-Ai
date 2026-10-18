@@ -83,6 +83,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupProperties
 import com.google.ai.edge.gallery.data.DataStoreRepository
+import com.google.ai.edge.gallery.ui.common.RotationalLoader
+import com.google.ai.edge.gallery.ui.theme.GalleryGlassIconButton
 import kotlinx.coroutines.launch
 
 private data class CloudProviderOption(
@@ -193,7 +195,7 @@ fun CloudProviderSettingsDialog(
       TopAppBar(
         title = { Text("Cloud model") },
         navigationIcon = {
-          IconButton(onClick = onDismiss) {
+          GalleryGlassIconButton(onClick = onDismiss, seed = 321) {
             Icon(Icons.Rounded.ArrowBack, contentDescription = "Back")
           }
         },
@@ -375,7 +377,12 @@ fun CloudProviderSettingsDialog(
                 } catch (_: Exception) { fetchError = "Could not fetch models. Check the API settings and try again." }
                 finally { fetchingModels = false }
               }
-            }) { Text(if (fetchingModels) "Fetching…" else "Fetch models") }
+            }) {
+              Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (fetchingModels) RotationalLoader(size = 16.dp)
+                Text(if (fetchingModels) "Fetching…" else "Fetch models")
+              }
+            }
             Text("Uses the selected endpoint and matching API key only.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
           }
           if (fetchError != null) Text(fetchError.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
