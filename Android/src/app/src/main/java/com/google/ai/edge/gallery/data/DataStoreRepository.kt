@@ -28,7 +28,9 @@ import com.google.ai.edge.gallery.proto.Skill
 import com.google.ai.edge.gallery.proto.Skills
 import com.google.ai.edge.gallery.proto.Theme
 import com.google.ai.edge.gallery.proto.UserData
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 
 interface DataStoreRepository {
@@ -63,7 +65,13 @@ interface DataStoreRepository {
 
   fun saveSecret(key: String, value: String)
 
+  /** Saves all supplied secrets in one DataStore transaction. */
+  fun saveSecrets(values: Map<String, String>)
+
   fun readSecret(key: String): String?
+
+  /** Emits the current value and subsequent updates for [key]. */
+  fun observeSecret(key: String): Flow<String?>
 
   fun deleteSecret(key: String)
 
@@ -199,9 +207,14 @@ class DefaultDataStoreRepository(
   }
 
   override fun saveSecret(key: String, value: String) {
+    saveSecrets(mapOf(key to value))
+  }
+
+  override fun saveSecrets(values: Map<String, String>) {
+    if (values.isEmpty()) return
     runBlocking {
       userDataDataStore.updateData { userData ->
-        userData.toBuilder().putSecrets(key, value).build()
+        userData.toBuilder().putAllSecrets(values).build()
       }
     }
   }
@@ -209,6 +222,9 @@ class DefaultDataStoreRepository(
   override fun readSecret(key: String): String? {
     return runBlocking { userDataDataStore.data.first().secretsMap[key] }
   }
+
+  override fun observeSecret(key: String): Flow<String?> =
+    userDataDataStore.data.map { userData -> userData.secretsMap[key] }
 
   override fun deleteSecret(key: String) {
     runBlocking {

@@ -28,6 +28,11 @@ plugins {
   alias(libs.plugins.ksp)
 }
 
+// Only private local build input; never put the distribution credential in source control.
+val bundledEayKey = providers.environmentVariable("EAY_API_KEY_FILE").orNull
+  ?.let { file(it).readText().trim() }.orEmpty()
+val bundledEayKeyLiteral = groovy.json.JsonOutput.toJson(bundledEayKey)
+
 android {
   namespace = "com.google.ai.edge.gallery"
   compileSdk { this.version = release(37) { minorApiLevel = 0 } }
@@ -36,8 +41,8 @@ android {
     applicationId = "com.google.aiedge.gallery"
     minSdk = 31
     targetSdk = 37
-    versionCode = 50
-    versionName = "1.0.24"
+    versionCode = 51
+    versionName = "1.0.25"
 
     // Needed for HuggingFace auth workflows.
     // Use the scheme of the "Redirect URLs" in HuggingFace app.
@@ -47,6 +52,7 @@ android {
     manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
 
     buildConfigField("String", "FEEDBACK_API_KEY", "\"\"")
+    buildConfigField("String", "EAY_API_KEY", bundledEayKeyLiteral)
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -82,6 +88,15 @@ android {
       pickFirsts.add("**/liblitertlm_jni.so")
       // Compress native libraries in the APK; Android extracts them at install time.
       useLegacyPackaging = true
+    }
+  }
+}
+
+// A release without the bundled credential must never silently ship again.
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+  doFirst {
+    check(bundledEayKey.isNotBlank()) {
+      "Release requires EAY_API_KEY_FILE pointing to a private local credential file."
     }
   }
 }

@@ -128,34 +128,48 @@ fun CloudProviderSettingsDialog(
   onSaved: () -> Unit = {},
 ) {
   val context = LocalContext.current
-  val savedProviderId = remember { dataStoreRepository.readSecret(CLOUD_PROVIDER_KEY) }
-  val persistedEndpoint = remember { dataStoreRepository.readSecret(CLOUD_ENDPOINT_KEY) ?: defaultCloudEndpoint(savedProviderId ?: CLOUD_PROVIDER_GEMINI) }
-  remember { CloudApiKeyVault.bindLegacyKey(context, savedProviderId ?: CLOUD_PROVIDER_GEMINI, persistedEndpoint) }
+  val initialConfig = remember(context, dataStoreRepository) {
+    loadCloudProviderConfig(context, dataStoreRepository)
+  }
   val initialProvider =
-    cloudProviderOptions.firstOrNull { it.id == savedProviderId } ?: cloudProviderOptions.first()
+    cloudProviderOptions.firstOrNull { it.id == initialConfig.providerId } ?: cloudProviderOptions.first()
+  val initialEndpoint =
+    if (initialProvider.id == CLOUD_PROVIDER_EAY) defaultCloudEndpoint(CLOUD_PROVIDER_EAY)
+    else initialConfig.endpoint.ifBlank { initialProvider.defaultEndpoint }
+  val initialTextModel =
+    dataStoreRepository.readSecret(cloudProfileKey(initialProvider.id, "text_model"))
+      ?: initialConfig.modelId.ifBlank {
+        if (initialProvider.id == CLOUD_PROVIDER_EAY) EAY_MODEL_PRESETS[1].id
+        else initialProvider.defaultTextModel
+      }
+  val initialProfileEndpoint =
+    if (initialProvider.id == CLOUD_PROVIDER_EAY) initialEndpoint
+    else dataStoreRepository.readSecret(cloudProfileKey(initialProvider.id, "endpoint"))
+      ?: initialEndpoint
   var providerId by remember { mutableStateOf(initialProvider.id) }
-  var endpoint by remember {
-    mutableStateOf(
-      persistedEndpoint
-    )
-  }
-  var textModel by remember {
-    mutableStateOf(
-      dataStoreRepository.readSecret(CLOUD_TEXT_MODEL_KEY)
-        ?: dataStoreRepository.readSecret(CLOUD_MODEL_KEY)
-        ?: initialProvider.defaultTextModel
-    )
-  }
+  var endpoint by remember { mutableStateOf(initialProfileEndpoint) }
+  var textModel by remember { mutableStateOf(normalizedCloudTextModel(initialProvider.id, initialTextModel)) }
   var imageModel by remember {
-    mutableStateOf(dataStoreRepository.readSecret(CLOUD_IMAGE_MODEL_KEY) ?: initialProvider.defaultImageModel)
+    mutableStateOf(
+      dataStoreRepository.readSecret(cloudProfileKey(initialProvider.id, "image_model"))
+        ?: initialConfig.imageModelId
+    )
   }
   var thinkingEffort by remember {
-    mutableStateOf(dataStoreRepository.readSecret(CLOUD_THINKING_EFFORT_KEY) ?: CLOUD_THINKING_DEFAULT)
+    mutableStateOf(
+      dataStoreRepository.readSecret(cloudProfileKey(initialProvider.id, "thinking_effort"))
+        ?: initialConfig.thinkingEffort
+    )
   }
   var apiKey by remember { mutableStateOf("") }
   var removeSavedApiKey by remember { mutableStateOf(false) }
   var saveError by remember { mutableStateOf<String?>(null) }
-  var protocol by remember { mutableStateOf(dataStoreRepository.readSecret(CLOUD_PROTOCOL_KEY) ?: defaultCloudProtocol(initialProvider.id)) }
+  var protocol by remember {
+    mutableStateOf(
+      dataStoreRepository.readSecret(cloudProfileKey(initialProvider.id, "protocol"))
+        ?: initialConfig.protocol
+    )
+  }
   var fetchingModels by remember { mutableStateOf(false) }
   var fetchedModels by remember { mutableStateOf(emptyList<CloudModel>()) }
   var modelSearch by remember { mutableStateOf("") }
@@ -165,6 +179,8 @@ fun CloudProviderSettingsDialog(
   val coroutineScope = rememberCoroutineScope()
   val selectedProvider = cloudProviderOptions.first { it.id == providerId }
   val hasMatchingSavedKey = CloudApiKeyVault.hasSavedKeyFor(context, providerId, endpoint)
+  val hasBundledApiKey =
+    providerId == CLOUD_PROVIDER_EAY && bundledCloudApiKey(providerId, endpoint).isNotBlank()
   val canSave = endpoint.isNotBlank() && textModel.isNotBlank() &&
     (providerId != CLOUD_PROVIDER_EAY || EAY_MODEL_PRESETS.any { it.id == textModel })
 
@@ -186,28 +202,38 @@ fun CloudProviderSettingsDialog(
             enabled = canSave,
             onClick = {
               val hasKeyAfterSave =
-                removeSavedApiKey || apiKey.isNotBlank() || (hasMatchingSavedKey && !removeSavedApiKey)
-              if (!hasKeyAfterSave) {
+                hasBundledApiKey || apiKey.isNotBlank() ||
+                  (hasMatchingSavedKey && !removeSavedApiKey)
+              if (!hasKeyAfterSave && !removeSavedApiKey) {
                 saveError = "Enter an API key to use a cloud model."
                 return@TextButton
               }
               try {
-                dataStoreRepository.saveSecret(CLOUD_PROVIDER_KEY, providerId)
-                dataStoreRepository.saveSecret(CLOUD_ENDPOINT_KEY, endpoint.trim())
-                dataStoreRepository.saveSecret(CLOUD_MODEL_KEY, textModel.trim())
-                dataStoreRepository.saveSecret(CLOUD_TEXT_MODEL_KEY, textModel.trim())
-                dataStoreRepository.saveSecret(CLOUD_IMAGE_MODEL_KEY, imageModel.trim())
-                dataStoreRepository.saveSecret(CLOUD_THINKING_EFFORT_KEY, thinkingEffort)
-                dataStoreRepository.saveSecret(CLOUD_PROTOCOL_KEY, protocol)
                 when {
                   removeSavedApiKey -> {
-                    CloudApiKeyVault.remove(context)
+                    CloudApiKeyVault.remove(context, providerId, endpoint.trim())
                   }
                   apiKey.isNotBlank() -> {
                     CloudApiKeyVault.save(context, apiKey.trim(), providerId, endpoint.trim())
                     apiKey = ""
                   }
                 }
+                dataStoreRepository.saveSecrets(
+                  mapOf(
+                    CLOUD_PROVIDER_KEY to providerId,
+                    CLOUD_ENDPOINT_KEY to endpoint.trim(),
+                    CLOUD_MODEL_KEY to textModel.trim(),
+                    CLOUD_TEXT_MODEL_KEY to textModel.trim(),
+                    CLOUD_IMAGE_MODEL_KEY to imageModel.trim(),
+                    CLOUD_THINKING_EFFORT_KEY to thinkingEffort,
+                    CLOUD_PROTOCOL_KEY to protocol,
+                    cloudProfileKey(providerId, "endpoint") to endpoint.trim(),
+                    cloudProfileKey(providerId, "text_model") to textModel.trim(),
+                    cloudProfileKey(providerId, "image_model") to imageModel.trim(),
+                    cloudProfileKey(providerId, "thinking_effort") to thinkingEffort,
+                    cloudProfileKey(providerId, "protocol") to protocol,
+                  )
+                )
                 onSaved()
                 onDismiss()
               } catch (_: Exception) {
@@ -254,10 +280,16 @@ fun CloudProviderSettingsDialog(
             val chooseProvider = {
               if (providerId != option.id) {
                 providerId = option.id
-                endpoint = option.defaultEndpoint
-                textModel = option.defaultTextModel
-                imageModel = option.defaultImageModel
-                protocol = defaultCloudProtocol(option.id)
+                endpoint = if (option.id == CLOUD_PROVIDER_EAY) defaultCloudEndpoint(option.id)
+                  else dataStoreRepository.readSecret(cloudProfileKey(option.id, "endpoint")) ?: option.defaultEndpoint
+                textModel = normalizedCloudTextModel(option.id,
+                  dataStoreRepository.readSecret(cloudProfileKey(option.id, "text_model")))
+                imageModel = dataStoreRepository.readSecret(cloudProfileKey(option.id, "image_model"))
+                  ?: option.defaultImageModel
+                thinkingEffort = dataStoreRepository.readSecret(cloudProfileKey(option.id, "thinking_effort"))
+                  ?: CLOUD_THINKING_DEFAULT
+                protocol = dataStoreRepository.readSecret(cloudProfileKey(option.id, "protocol"))
+                  ?: defaultCloudProtocol(option.id)
                 apiKey = ""
                 removeSavedApiKey = false
                 fetchedModels = emptyList()
@@ -305,6 +337,7 @@ fun CloudProviderSettingsDialog(
           onValueChange = { endpoint = it; fetchedModels = emptyList(); fetchError = null; fetchNotice = null; saveError = null },
           modifier = Modifier.fillMaxWidth(),
           singleLine = true,
+          readOnly = providerId == CLOUD_PROVIDER_EAY,
           label = { Text("API base URL") },
         )
       }
@@ -427,20 +460,28 @@ fun CloudProviderSettingsDialog(
       }
 
       SettingsSection(title = "API key", subtitle = "Keep your provider credentials protected on this device.") {
-        OutlinedTextField(
-          value = apiKey,
-          onValueChange = {
-            apiKey = it
-            saveError = null
-            if (it.isNotBlank()) removeSavedApiKey = false
-          },
-          modifier = Modifier.fillMaxWidth(),
-          singleLine = true,
-          visualTransformation = PasswordVisualTransformation(),
-          leadingIcon = { Icon(Icons.Rounded.Key, contentDescription = null) },
-          label = { Text("API key") },
-          placeholder = { Text(if (hasMatchingSavedKey) "Key saved for this provider and origin" else "Enter API key for selected provider") },
-        )
+        if (hasBundledApiKey) {
+          Text(
+            "EAY is ready to use with its built-in API key. No key entry is needed.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        } else {
+          OutlinedTextField(
+            value = apiKey,
+            onValueChange = {
+              apiKey = it
+              saveError = null
+              if (it.isNotBlank()) removeSavedApiKey = false
+            },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            leadingIcon = { Icon(Icons.Rounded.Key, contentDescription = null) },
+            label = { Text("API key") },
+            placeholder = { Text(if (hasMatchingSavedKey) "Key saved for this provider and origin" else "Enter API key for selected provider") },
+          )
+        }
         if (hasMatchingSavedKey && !removeSavedApiKey) {
           TextButton(
             onClick = {

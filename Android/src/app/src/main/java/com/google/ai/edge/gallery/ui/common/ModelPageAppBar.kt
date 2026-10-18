@@ -17,6 +17,7 @@
 package com.google.ai.edge.gallery.ui.common
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,8 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,16 +73,27 @@ import com.google.ai.edge.gallery.data.ModelUtils
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.data.convertValueToTargetType
 import com.google.ai.edge.gallery.firebaseAnalytics
+import com.google.ai.edge.gallery.ui.home.CLOUD_ENDPOINT_KEY
+import com.google.ai.edge.gallery.ui.home.CLOUD_IMAGE_MODEL_KEY
 import com.google.ai.edge.gallery.ui.home.CLOUD_MODEL_KEY
-import com.google.ai.edge.gallery.ui.home.CLOUD_TEXT_MODEL_KEY
+import com.google.ai.edge.gallery.ui.home.CLOUD_PROTOCOL_KEY
+import com.google.ai.edge.gallery.ui.home.CLOUD_THINKING_DEFAULT
+import com.google.ai.edge.gallery.ui.home.CLOUD_THINKING_EFFORT_KEY
+import com.google.ai.edge.gallery.ui.home.CLOUD_PROVIDER_EAY
 import com.google.ai.edge.gallery.ui.home.CLOUD_PROVIDER_KEY
-import com.google.ai.edge.gallery.ui.home.CLOUD_PROVIDER_GEMINI
+import com.google.ai.edge.gallery.ui.home.CLOUD_TEXT_MODEL_KEY
+import com.google.ai.edge.gallery.ui.home.EAY_MODEL_PRESETS
+import com.google.ai.edge.gallery.ui.home.eayModelSelectionSettings
+import com.google.ai.edge.gallery.ui.home.cloudProfileKey
+import com.google.ai.edge.gallery.ui.home.normalizedCloudTextModel
 import com.google.ai.edge.gallery.ui.home.cloudModelDisplayName
-import com.google.ai.edge.gallery.ui.home.defaultCloudTextModel
+import com.google.ai.edge.gallery.ui.home.defaultCloudEndpoint
+import com.google.ai.edge.gallery.ui.home.defaultCloudProtocol
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.litertlm.ModelInfo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -146,29 +161,92 @@ fun ModelPageAppBar(
         // Model chips pager.
         if (isCloudAgent) {
           val repository = modelManagerViewModel.dataStoreRepository
-          val provider = repository.readSecret(CLOUD_PROVIDER_KEY) ?: CLOUD_PROVIDER_GEMINI
-          val modelId = repository.readSecret(CLOUD_TEXT_MODEL_KEY)
-            ?: repository.readSecret(CLOUD_MODEL_KEY) ?: defaultCloudTextModel(provider)
-          Surface(
-            onClick = onCloudSettingsClicked,
-            enabled = showCloudSettingsButton && !inProgress,
-            shape = RoundedCornerShape(50),
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-          ) {
-            Row(
-              modifier = Modifier.padding(start = 12.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.spacedBy(2.dp),
+          val savedProvider by remember(repository) { repository.observeSecret(CLOUD_PROVIDER_KEY) }.collectAsStateWithLifecycle(
+            initialValue = repository.readSecret(CLOUD_PROVIDER_KEY) ?: CLOUD_PROVIDER_EAY,
+          )
+          val savedTextModel by remember(repository) { repository.observeSecret(CLOUD_TEXT_MODEL_KEY) }
+            .collectAsStateWithLifecycle(initialValue = repository.readSecret(CLOUD_TEXT_MODEL_KEY))
+          val legacyModel by remember(repository) { repository.observeSecret(CLOUD_MODEL_KEY) }
+            .collectAsStateWithLifecycle(initialValue = repository.readSecret(CLOUD_MODEL_KEY))
+          val provider = savedProvider?.takeIf { it.isNotBlank() } ?: CLOUD_PROVIDER_EAY
+          val modelId = normalizedCloudTextModel(provider, savedTextModel ?: legacyModel)
+          var cloudMenuExpanded by remember { mutableStateOf(false) }
+          val coroutineScope = rememberCoroutineScope()
+
+          Box {
+            Surface(
+              onClick = { cloudMenuExpanded = true },
+              enabled = !inProgress,
+              shape = RoundedCornerShape(50),
+              color = MaterialTheme.colorScheme.secondaryContainer,
+              contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
             ) {
-              Text(
-                cloudModelDisplayName(modelId).ifBlank { "Choose model" },
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-              )
-              Icon(Icons.Rounded.ArrowDropDown, contentDescription = "Model settings", modifier = Modifier.size(16.dp))
+              Row(
+                modifier = Modifier.padding(start = 12.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+              ) {
+                Text(
+                  cloudModelDisplayName(provider, modelId).ifBlank { "Choose model" },
+                  style = MaterialTheme.typography.labelSmall,
+                  maxLines = 1,
+                  overflow = TextOverflow.Ellipsis,
+                  modifier = Modifier.weight(1f, fill = false),
+                )
+                Icon(
+                  Icons.Rounded.ArrowDropDown,
+                  contentDescription = "Choose cloud model",
+                  modifier = Modifier.size(16.dp),
+                )
+              }
+            }
+
+            DropdownMenu(
+              expanded = cloudMenuExpanded,
+              onDismissRequest = { cloudMenuExpanded = false },
+            ) {
+              EAY_MODEL_PRESETS.forEach { preset ->
+                DropdownMenuItem(
+                  text = { Text(preset.label) },
+                  onClick = {
+                    cloudMenuExpanded = false
+                    coroutineScope.launch(Dispatchers.IO) {
+                      try {
+                        val currentProvider = repository.readSecret(CLOUD_PROVIDER_KEY) ?: CLOUD_PROVIDER_EAY
+                        val imageModel = if (currentProvider == CLOUD_PROVIDER_EAY)
+                          repository.readSecret(CLOUD_IMAGE_MODEL_KEY)
+                        else repository.readSecret(cloudProfileKey(CLOUD_PROVIDER_EAY, "image_model"))
+                        val eayThinkingEffort = if (currentProvider == CLOUD_PROVIDER_EAY)
+                          repository.readSecret(CLOUD_THINKING_EFFORT_KEY)
+                        else repository.readSecret(cloudProfileKey(CLOUD_PROVIDER_EAY, "thinking_effort"))
+                        repository.saveSecrets(
+                          eayModelSelectionSettings(preset.id, imageModel.orEmpty(),
+                            eayThinkingEffort ?: CLOUD_THINKING_DEFAULT)
+                        )
+                      } catch (e: CancellationException) {
+                        throw e
+                      } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                          Toast.makeText(
+                            context.applicationContext,
+                            "Could not save cloud model selection",
+                            Toast.LENGTH_SHORT,
+                          ).show()
+                        }
+                      }
+                    }
+                  },
+                )
+              }
+              if (showCloudSettingsButton) {
+                DropdownMenuItem(
+                  text = { Text("Cloud settings…") },
+                  onClick = {
+                    cloudMenuExpanded = false
+                    onCloudSettingsClicked()
+                  },
+                )
+              }
             }
           }
         } else if (!hideModelSelector) {

@@ -19,9 +19,11 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import com.google.ai.edge.gallery.BuildConfig
 import com.google.ai.edge.gallery.data.DataStoreRepository
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
+import java.security.MessageDigest
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -42,9 +44,25 @@ data class CloudModelPreset(val label: String, val id: String)
 
 val EAY_MODEL_PRESETS = listOf(
   CloudModelPreset("Wiki lite", "eay/gemini-3-flash-preview"),
-  CloudModelPreset("Wiki flash", "eay/gemini-3.1-flash-lite"),
+  CloudModelPreset("Wiki Flash", "eay/gemini-3.1-flash-lite"),
   CloudModelPreset("Wiki Pro", "eay/gemini-3.1-pro-preview"),
 )
+
+fun cloudProfileKey(providerId: String, field: String) = "cloud_profile_${providerId}_$field"
+
+const val EAY_DEFAULT_MODEL = "eay/gemini-3.1-flash-lite"
+
+/** Only the fixed EAY API may receive the distribution key supplied by the local build. */
+fun isBundledCloudEndpoint(providerId: String, endpoint: String): Boolean =
+  providerId == CLOUD_PROVIDER_EAY && endpoint.trim().trimEnd('/') == defaultCloudEndpoint(CLOUD_PROVIDER_EAY)
+
+fun bundledCloudApiKey(providerId: String, endpoint: String): String =
+  if (isBundledCloudEndpoint(providerId, endpoint)) BuildConfig.EAY_API_KEY else ""
+
+fun normalizedCloudTextModel(providerId: String, savedModel: String?): String =
+  if (providerId == CLOUD_PROVIDER_EAY) {
+    savedModel?.takeIf { id -> EAY_MODEL_PRESETS.any { it.id == id } } ?: EAY_DEFAULT_MODEL
+  } else savedModel ?: defaultCloudTextModel(providerId)
 
 fun cloudModelDisplayName(modelId: String): String =
   EAY_MODEL_PRESETS.firstOrNull { it.id == modelId }?.label ?: modelId
@@ -105,7 +123,7 @@ fun defaultCloudEndpoint(providerId: String): String =
 
 fun defaultCloudTextModel(providerId: String): String =
   when (providerId) {
-    CLOUD_PROVIDER_EAY -> ""
+    CLOUD_PROVIDER_EAY -> EAY_DEFAULT_MODEL
     CLOUD_PROVIDER_OPENAI_COMPATIBLE -> "gpt-4o-mini"
     CLOUD_PROVIDER_OPENROUTER -> "openai/gpt-4o-mini"
     CLOUD_PROVIDER_GROQ -> "llama-3.3-70b-versatile"
@@ -139,6 +157,29 @@ fun supportsCloudThinkingEffort(providerId: String, modelId: String): Boolean {
   }
 }
 
+/** Switching a model must preserve the selected provider's unrelated preferences. */
+fun eayModelSelectionSettings(
+  modelId: String,
+  imageModelId: String = "",
+  thinkingEffort: String = CLOUD_THINKING_DEFAULT,
+): Map<String, String> {
+  require(EAY_MODEL_PRESETS.any { it.id == modelId }) { "Unknown Wiki preset" }
+  return mapOf(
+    CLOUD_PROVIDER_KEY to CLOUD_PROVIDER_EAY,
+    CLOUD_ENDPOINT_KEY to defaultCloudEndpoint(CLOUD_PROVIDER_EAY),
+    CLOUD_PROTOCOL_KEY to CLOUD_PROTOCOL_OPENAI,
+    CLOUD_MODEL_KEY to modelId,
+    CLOUD_TEXT_MODEL_KEY to modelId,
+    CLOUD_IMAGE_MODEL_KEY to imageModelId,
+    CLOUD_THINKING_EFFORT_KEY to thinkingEffort,
+    cloudProfileKey(CLOUD_PROVIDER_EAY, "endpoint") to defaultCloudEndpoint(CLOUD_PROVIDER_EAY),
+    cloudProfileKey(CLOUD_PROVIDER_EAY, "protocol") to CLOUD_PROTOCOL_OPENAI,
+    cloudProfileKey(CLOUD_PROVIDER_EAY, "text_model") to modelId,
+    cloudProfileKey(CLOUD_PROVIDER_EAY, "image_model") to imageModelId,
+    cloudProfileKey(CLOUD_PROVIDER_EAY, "thinking_effort") to thinkingEffort,
+  )
+}
+
 /** Runtime-ready snapshot of the locally stored cloud provider settings. */
 data class CloudProviderConfig(
   val providerId: String,
@@ -168,7 +209,16 @@ object CloudApiKeyVault {
   private const val GCM_TAG_LENGTH_BITS = 128
   private const val GCM_IV_LENGTH_BYTES = 12
 
-  fun hasSavedKey(context: Context): Boolean = preferences(context).contains(ENCRYPTED_API_KEY)
+  private fun credentialSlot(providerId: String, endpoint: String): String {
+    val scope = "$providerId|${cloudEndpointOrigin(endpoint)}"
+    val hash = MessageDigest.getInstance("SHA-256").digest(scope.toByteArray(StandardCharsets.UTF_8))
+      .joinToString("") { "%02x".format(it) }
+    return "${ENCRYPTED_API_KEY}_$hash"
+  }
+
+  fun hasSavedKey(context: Context): Boolean = preferences(context).all.keys.any {
+    it == ENCRYPTED_API_KEY || it.startsWith("${ENCRYPTED_API_KEY}_")
+  }
 
   fun save(context: Context, apiKey: String, providerId: String, endpoint: String) {
     val cipher = Cipher.getInstance(TRANSFORMATION)
@@ -177,29 +227,34 @@ object CloudApiKeyVault {
     val payload = cipher.iv + encrypted
     preferences(context)
       .edit()
-      .putString(ENCRYPTED_API_KEY, Base64.encodeToString(payload, Base64.NO_WRAP))
-      .putString(KEY_PROVIDER, providerId)
-      .putString(KEY_ORIGIN, cloudEndpointOrigin(endpoint))
-      .apply()
+      .putString(credentialSlot(providerId, endpoint), Base64.encodeToString(payload, Base64.NO_WRAP))
+      .commit().also { check(it) { "Could not persist cloud credential" } }
   }
 
   /** Claims an older unscoped encrypted key for the provider/endpoint already stored on device. */
   fun bindLegacyKey(context: Context, providerId: String, endpoint: String) {
     val prefs = preferences(context)
     if (prefs.contains(ENCRYPTED_API_KEY) && !prefs.contains(KEY_PROVIDER) && !prefs.contains(KEY_ORIGIN)) {
-      prefs.edit().putString(KEY_PROVIDER, providerId).putString(KEY_ORIGIN, cloudEndpointOrigin(endpoint)).apply()
+      prefs.edit().putString(KEY_PROVIDER, providerId).putString(KEY_ORIGIN, cloudEndpointOrigin(endpoint)).commit()
     }
   }
 
-  fun hasSavedKeyFor(context: Context, providerId: String, endpoint: String): Boolean =
-    hasSavedKey(context) && preferences(context).getString(KEY_PROVIDER, null) == providerId &&
-      preferences(context).getString(KEY_ORIGIN, null) == cloudEndpointOrigin(endpoint)
+  fun hasSavedKeyFor(context: Context, providerId: String, endpoint: String): Boolean {
+    val prefs = preferences(context)
+    return prefs.contains(credentialSlot(providerId, endpoint)) ||
+      (prefs.contains(ENCRYPTED_API_KEY) && prefs.getString(KEY_PROVIDER, null) == providerId &&
+        prefs.getString(KEY_ORIGIN, null) == cloudEndpointOrigin(endpoint))
+  }
 
-  fun read(context: Context, providerId: String, endpoint: String): String? =
-    if (hasSavedKeyFor(context, providerId, endpoint)) read(context) else null
+  fun read(context: Context, providerId: String, endpoint: String): String? {
+    if (!hasSavedKeyFor(context, providerId, endpoint)) return null
+    val prefs = preferences(context)
+    val encoded = prefs.getString(credentialSlot(providerId, endpoint), null)
+      ?: prefs.getString(ENCRYPTED_API_KEY, null) ?: return null
+    return decrypt(encoded)
+  }
 
-  fun read(context: Context): String? {
-    val encodedPayload = preferences(context).getString(ENCRYPTED_API_KEY, null) ?: return null
+  private fun decrypt(encodedPayload: String): String? {
     return try {
       val payload = Base64.decode(encodedPayload, Base64.NO_WRAP)
       if (payload.size <= GCM_IV_LENGTH_BYTES) return null
@@ -217,8 +272,14 @@ object CloudApiKeyVault {
     }
   }
 
-  fun remove(context: Context) {
-    preferences(context).edit().remove(ENCRYPTED_API_KEY).remove(KEY_PROVIDER).remove(KEY_ORIGIN).apply()
+  fun remove(context: Context, providerId: String, endpoint: String) {
+    val prefs = preferences(context)
+    val editor = prefs.edit().remove(credentialSlot(providerId, endpoint))
+    if (prefs.getString(KEY_PROVIDER, null) == providerId &&
+      prefs.getString(KEY_ORIGIN, null) == cloudEndpointOrigin(endpoint)) {
+      editor.remove(ENCRYPTED_API_KEY).remove(KEY_PROVIDER).remove(KEY_ORIGIN)
+    }
+    check(editor.commit()) { "Could not remove cloud credential" }
   }
 
   private fun preferences(context: Context) =
@@ -256,23 +317,26 @@ fun cloudEndpointOrigin(endpoint: String): String {
 
 /** Loads all runtime settings in one place; API keys are decrypted only when explicitly needed. */
 fun loadCloudProviderConfig(context: Context, dataStoreRepository: DataStoreRepository): CloudProviderConfig {
-  val providerId = dataStoreRepository.readSecret(CLOUD_PROVIDER_KEY) ?: CLOUD_PROVIDER_GEMINI
-  val savedEndpoint = dataStoreRepository.readSecret(CLOUD_ENDPOINT_KEY) ?: defaultCloudEndpoint(providerId)
+  val providerId = dataStoreRepository.readSecret(CLOUD_PROVIDER_KEY)?.takeIf { it.isNotBlank() } ?: CLOUD_PROVIDER_EAY
+  val savedEndpoint = if (providerId == CLOUD_PROVIDER_EAY) defaultCloudEndpoint(providerId)
+    else dataStoreRepository.readSecret(CLOUD_ENDPOINT_KEY) ?: defaultCloudEndpoint(providerId)
   CloudApiKeyVault.bindLegacyKey(context, providerId, savedEndpoint)
-  val textModel =
+  val savedTextModel =
     dataStoreRepository.readSecret(CLOUD_TEXT_MODEL_KEY)
       ?: dataStoreRepository.readSecret(CLOUD_MODEL_KEY)
       ?: defaultCloudTextModel(providerId)
+  val textModel = normalizedCloudTextModel(providerId, savedTextModel)
   return CloudProviderConfig(
     providerId = providerId,
     endpoint = savedEndpoint,
     modelId = textModel,
-    apiKey = CloudApiKeyVault.read(context, providerId,
-      savedEndpoint).orEmpty(),
+    apiKey = CloudApiKeyVault.read(context, providerId, savedEndpoint)?.takeIf { it.isNotBlank() }
+      ?: bundledCloudApiKey(providerId, savedEndpoint),
     imageModelId =
       dataStoreRepository.readSecret(CLOUD_IMAGE_MODEL_KEY) ?: defaultCloudImageModel(providerId),
     thinkingEffort =
       dataStoreRepository.readSecret(CLOUD_THINKING_EFFORT_KEY) ?: CLOUD_THINKING_DEFAULT,
-    protocol = dataStoreRepository.readSecret(CLOUD_PROTOCOL_KEY) ?: defaultCloudProtocol(providerId),
+    protocol = if (providerId == CLOUD_PROVIDER_EAY) CLOUD_PROTOCOL_OPENAI
+      else dataStoreRepository.readSecret(CLOUD_PROTOCOL_KEY) ?: defaultCloudProtocol(providerId),
   )
 }

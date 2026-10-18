@@ -492,8 +492,19 @@ private fun AgentSkillsMainEntry(
     modelManagerViewModel.getCustomTaskByTaskId(BuiltInTaskId.LLM_AGENT_CHAT)
   val task = agentChatTask?.task
   val selectedModel = task?.let { CLOUD_AGENT_MODEL }
-  val cloudConfigured =
-    loadCloudProviderConfig(context, modelManagerViewModel.dataStoreRepository).isConfigured
+  var cloudConfigured by remember {
+    mutableStateOf(loadCloudProviderConfig(context, modelManagerViewModel.dataStoreRepository).isConfigured)
+  }
+  val entryLifecycleOwner = LocalLifecycleOwner.current
+  DisposableEffect(entryLifecycleOwner, context, modelManagerViewModel) {
+    val observer = LifecycleEventObserver { _, event ->
+      if (event == Lifecycle.Event.ON_RESUME) {
+        cloudConfigured = loadCloudProviderConfig(context, modelManagerViewModel.dataStoreRepository).isConfigured
+      }
+    }
+    entryLifecycleOwner.lifecycle.addObserver(observer)
+    onDispose { entryLifecycleOwner.lifecycle.removeObserver(observer) }
+  }
   var showTosDialog by remember { mutableStateOf(!tosViewModel.getIsTosAccepted()) }
 
   LaunchedEffect(task) {
