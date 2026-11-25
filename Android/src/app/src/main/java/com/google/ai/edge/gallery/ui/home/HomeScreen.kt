@@ -131,9 +131,6 @@ import com.google.ai.edge.gallery.ui.common.tos.AppTosDialog
 import com.google.ai.edge.gallery.ui.common.tos.TosViewModel
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.customColors
-import com.google.ai.edge.gallery.ui.theme.galleryGlass
-import dev.mttmcknn.seaglass.SeaGlassShape
-import dev.mttmcknn.seaglass.SeaGlassTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -742,7 +739,7 @@ private fun CategoryTabHeader(
             .clip(CircleShape)
             .then(
               if (selectedIndex == index) {
-                Modifier.galleryGlass(category.id.hashCode(), SeaGlassShape.Capsule)
+                Modifier.background(MaterialTheme.colorScheme.secondaryContainer)
               } else {
                 Modifier
               }
@@ -778,7 +775,7 @@ private fun CategoryTabHeader(
           modifier = Modifier.padding(horizontal = 16.dp),
           style = MaterialTheme.typography.labelLarge,
           color =
-            if (selectedIndex == index) SeaGlassTheme.palette.ink
+            if (selectedIndex == index) MaterialTheme.colorScheme.onSecondaryContainer
             else MaterialTheme.colorScheme.onSurfaceVariant,
         )
       }
@@ -972,8 +969,7 @@ private fun TaskCard(
   Card(
     modifier =
       modifier
-        .then(if (square) Modifier else Modifier.galleryGlass(task.id.hashCode()))
-        .clip(RoundedCornerShape(24.dp))
+                .clip(RoundedCornerShape(24.dp))
         .clickable(onClick = onClick)
         .graphicsLayer { alpha = progress }
         .semantics(mergeDescendants = true) {
@@ -983,7 +979,7 @@ private fun TaskCard(
     colors =
       CardDefaults.cardColors(
         containerColor =
-          if (square) MaterialTheme.colorScheme.surfaceContainer else Color.Transparent
+          if (square) MaterialTheme.colorScheme.surfaceContainer else MaterialTheme.colorScheme.surfaceContainerLow
       ),
   ) {
     if (square) {

@@ -84,7 +84,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupProperties
 import com.google.ai.edge.gallery.data.DataStoreRepository
 import com.google.ai.edge.gallery.ui.common.RotationalLoader
-import com.google.ai.edge.gallery.ui.theme.GalleryGlassIconButton
+import com.google.ai.edge.gallery.ui.theme.GalleryIconButton
 import kotlinx.coroutines.launch
 
 private data class CloudProviderOption(
@@ -195,7 +195,7 @@ fun CloudProviderSettingsDialog(
       TopAppBar(
         title = { Text("Cloud model") },
         navigationIcon = {
-          GalleryGlassIconButton(onClick = onDismiss, seed = 321) {
+          GalleryIconButton(onClick = onDismiss) {
             Icon(Icons.Rounded.ArrowBack, contentDescription = "Back")
           }
         },

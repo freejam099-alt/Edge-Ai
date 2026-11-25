@@ -32,7 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.google.ai.edge.gallery.R
-import com.google.ai.edge.gallery.ui.theme.GalleryGlassIconButton
+import com.google.ai.edge.gallery.ui.theme.GalleryIconButton
 
 /**
  * A button that is animated to show or hide based on the [isAtBottom] state. When visible, clicking
@@ -53,10 +53,7 @@ fun ScrollToBottomButton(isAtBottom: Boolean, onClick: () -> Unit) {
         ),
     exit = fadeOut(animationSpec = tween(durationMillis = 200)),
   ) {
-    GalleryGlassIconButton(
-      onClick = onClick,
-      seed = 301,
-    ) {
+    GalleryIconButton(onClick = onClick) {
       Icon(
         imageVector = Icons.Outlined.ArrowDownward,
         contentDescription = stringResource(R.string.cd_scroll_to_bottom),

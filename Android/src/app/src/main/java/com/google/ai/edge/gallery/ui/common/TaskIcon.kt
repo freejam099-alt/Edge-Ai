@@ -16,6 +16,10 @@
 
 package com.google.ai.edge.gallery.ui.common
 
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
@@ -40,10 +44,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import dev.mttmcknn.seaglass.SeaGlassShape
-import com.google.ai.edge.gallery.ui.theme.GalleryGlassRecipe
-import dev.mttmcknn.seaglass.SeaGlassTheme
-import dev.mttmcknn.seaglass.seaGlass
 import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.data.Task
 
@@ -84,19 +84,16 @@ fun TaskIcon(
     val iconAnimationProgress =
       if (animationProgress >= 0.8f) (animationProgress - 0.8f) / 0.2f else 0f
     if (glassBackdrop) {
-      val palette = SeaGlassTheme.palette
       Box(
         modifier =
-          Modifier.fillMaxSize().seaGlass(
-            style = GalleryGlassRecipe.copy(seed = task.id.hashCode()),
-            palette = palette,
-            shape = SeaGlassShape.Disc,
-          ),
+          Modifier.fillMaxSize()
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.secondaryContainer),
         contentAlignment = Alignment.Center,
       ) {
         Icon(
           icon,
-          tint = palette.ink,
+          tint = MaterialTheme.colorScheme.onSecondaryContainer,
           modifier =
             Modifier.size(width * 0.55f)
               .graphicsLayer { alpha = iconAnimationProgress }
