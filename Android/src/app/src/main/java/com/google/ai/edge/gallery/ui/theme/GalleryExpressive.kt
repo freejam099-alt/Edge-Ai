@@ -5,6 +5,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -41,4 +42,15 @@ fun GalleryIconButton(
     shapes = IconButtonDefaults.shapes(),
     content = content,
   )
+}
+
+/**
+ * Expressive loading indicator that morphs between Material shapes. Use it for standalone waits
+ * (a screen or panel loading); keep the small circular spinner for inline progress inside buttons
+ * and rows, where a 48dp morphing shape would be too large.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun GalleryLoadingIndicator(modifier: Modifier = Modifier) {
+  LoadingIndicator(modifier = modifier)
 }

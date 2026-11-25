@@ -16,6 +16,7 @@
 
 package com.google.ai.edge.gallery.ui.navigation
 
+import com.google.ai.edge.gallery.ui.theme.GalleryLoadingIndicator
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -627,7 +628,7 @@ private fun AgentSkillsEntryState(
           tint = Color(0xFFC8A53A),
           modifier = Modifier.size(76.dp).scale(iconScale).padding(bottom = 18.dp),
         )
-        if (loading) CircularProgressIndicator(modifier = Modifier.padding(bottom = 16.dp))
+        if (loading) GalleryLoadingIndicator(modifier = Modifier.padding(bottom = 16.dp))
         Text(
           text = message,
           style = MaterialTheme.typography.bodyLarge,

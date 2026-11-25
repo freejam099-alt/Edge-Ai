@@ -35,7 +35,7 @@ val bundledEayKeyLiteral = groovy.json.JsonOutput.toJson(bundledEayKey)
 
 android {
   namespace = "com.google.ai.edge.gallery"
-  compileSdk { this.version = release(37) { minorApiLevel = 0 } }
+  compileSdk { this.version = release(37) { minorApiLevel = 1 } }
 
   defaultConfig {
     applicationId = "com.google.aiedge.gallery"

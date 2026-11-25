@@ -16,6 +16,7 @@
 
 package com.google.ai.edge.gallery.ui.benchmark
 
+import com.google.ai.edge.gallery.ui.theme.GalleryLoadingIndicator
 import android.content.ClipData
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -266,7 +267,7 @@ fun BenchmarkResultsViewer(
               ) {
                 // Progress spinner.
                 if (!hideProgressIndicator) {
-                  CircularProgressIndicator(strokeWidth = 4.dp, modifier = Modifier.size(36.dp))
+                  GalleryLoadingIndicator(modifier = Modifier.size(48.dp))
                 }
                 // Info text.
                 Text(
