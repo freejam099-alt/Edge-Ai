@@ -1,0 +1,89 @@
+sha: 5cc05b77b197919c9e1297f8df4d9653892595df
+run: 45755558181
+time: 2026-11-26T04:34:27Z
+== sdk platforms ==
+  platforms;android-37.0             | 2             | Android SDK Platform 37.0        | platforms/android-37.0            
+  platforms;android-37.1             | 1             | Android SDK Platform 37.1        | platforms/android-37.1            
+  platforms;android-37.2             | 2             | Android SDK Platform 37.2        | platforms/android-37.2            
+  platforms;android-37.2-beta1       | 1             | Android SDK Platform 37.2-beta1  | platforms/android-37.2-beta1      
+  platforms;android-37.2-beta2       | 2             | Android SDK Platform 37.2-beta2  | platforms/android-37.2-beta2      
+  platforms;android-37.2-beta3       | 3             | Android SDK Platform 37.2-beta3  | platforms/android-37.2-beta3      
+  platforms;android-37.0                                                          | 2                 | Android SDK Platform 37.0                                                       
+  platforms;android-37.1                                                          | 1                 | Android SDK Platform 37.1                                                       
+  platforms;android-37.2                                                          | 2                 | Android SDK Platform 37.2                                                       
+  platforms;android-37.2-beta1                                                    | 1                 | Android SDK Platform 37.2-beta1                                                 
+  platforms;android-37.2-beta2                                                    | 2                 | Android SDK Platform 37.2-beta2                                                 
+  platforms;android-37.2-beta3                                                    | 3                 | Android SDK Platform 37.2-beta3                                                 
+== assemble: errors/warnings summary ==
+> Task :app:checkDebugAarMetadata FAILED
+* What went wrong:
+Execution failed for task ':app:checkDebugAarMetadata'.
+org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':app:checkDebugAarMetadata'.
+BUILD FAILED in 3m 38s
+ASSEMBLE_EXIT=1
+== assemble: tail ==
+
+  9.  Dependency 'androidx.compose.ui:ui-graphics-android:1.13.0' requires Android Gradle plugin 9.1.0 or higher.
+
+      This build currently uses Android Gradle plugin 9.0.1.
+
+ 10.  Dependency 'androidx.compose.ui:ui-tooling-android:1.13.0' requires Android Gradle plugin 9.1.0 or higher.
+
+      This build currently uses Android Gradle plugin 9.0.1.
+
+ 11.  Dependency 'androidx.compose.material3:material3-android:1.5.0' requires Android Gradle plugin 9.1.0 or higher.
+
+      This build currently uses Android Gradle plugin 9.0.1.
+
+ 12.  Dependency 'androidx.core:core-ktx:1.19.0' requires Android Gradle plugin 9.1.0 or higher.
+
+      This build currently uses Android Gradle plugin 9.0.1.
+
+ 13.  Dependency 'androidx.core:core:1.19.0' requires Android Gradle plugin 9.1.0 or higher.
+
+      This build currently uses Android Gradle plugin 9.0.1.
+
+ 14.  Dependency 'androidx.compose.ui:ui-android:1.13.0' requires Android Gradle plugin 9.1.0 or higher.
+
+      This build currently uses Android Gradle plugin 9.0.1.
+	at com.android.build.gradle.internal.tasks.CheckAarMetadataWorkAction.execute(CheckAarMetadataTask.kt:288)
+	at org.gradle.workers.internal.DefaultWorkerServer.execute(DefaultWorkerServer.java:68)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:64)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:61)
+	at org.gradle.internal.classloader.ClassLoaderUtils.executeInClassloader(ClassLoaderUtils.java:100)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.lambda$execute$0(NoIsolationWorkerFactory.java:61)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:44)
+	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:41)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.workers.internal.AbstractWorker.executeWrappedInBuildOperation(AbstractWorker.java:41)
+	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.execute(NoIsolationWorkerFactory.java:58)
+	at org.gradle.workers.internal.DefaultWorkerExecutor.lambda$submitWork$0(DefaultWorkerExecutor.java:176)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runExecution(DefaultConditionalExecutionQueue.java:194)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.access$700(DefaultConditionalExecutionQueue.java:127)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner$1.run(DefaultConditionalExecutionQueue.java:169)
+	at org.gradle.internal.Factories$1.create(Factories.java:33)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.lambda$withLocksAcquired$0(DefaultWorkerLeaseService.java:269)
+	at org.gradle.internal.work.ResourceLockStatistics$1.measure(ResourceLockStatistics.java:42)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocksAcquired(DefaultWorkerLeaseService.java:267)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocks(DefaultWorkerLeaseService.java:259)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:127)
+	at org.gradle.internal.work.DefaultWorkerLeaseService.runAsWorkerThread(DefaultWorkerLeaseService.java:132)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runBatch(DefaultConditionalExecutionQueue.java:164)
+	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.run(DefaultConditionalExecutionQueue.java:133)
+	... 2 more
+
+
+BUILD FAILED in 3m 38s
+20 actionable tasks: 20 executed
+ASSEMBLE_EXIT=1
+== tests: summary ==
+> Task :app:checkDebugAarMetadata FAILED
+> Task :app:compileDebugKotlin FAILED
+BUILD FAILED in 44s
+TEST_EXIT=1
