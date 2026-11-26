@@ -1,6 +1,6 @@
-sha: 30c9cfb418e3bbbf2b5f05a6fbd89cc15e3cfd80
-run: 45756689412
-time: 2026-11-26T04:45:14Z
+sha: 8f692071e23d18062475da62adff4c21f14dbe63
+run: 45757625706
+time: 2026-11-26T04:57:12Z
 == sdk platforms ==
   platforms;android-37.0             | 2             | Android SDK Platform 37.0        | platforms/android-37.0            
   platforms;android-37.1             | 1             | Android SDK Platform 37.1        | platforms/android-37.1            
@@ -15,7 +15,7 @@ time: 2026-11-26T04:45:14Z
   platforms;android-37.2-beta2                                                    | 2                 | Android SDK Platform 37.2-beta2                                                 
   platforms;android-37.2-beta3                                                    | 3                 | Android SDK Platform 37.2-beta3                                                 
 == assemble: errors/warnings summary ==
-BUILD SUCCESSFUL in 4m 25s
+BUILD SUCCESSFUL in 7m 7s
 ASSEMBLE_EXIT=0
 == assemble: tail ==
 See https://youtrack.jetbrains.com/issue/KT-73255 for more details.
@@ -70,14 +70,14 @@ warning: Kapt support in Moshi Kotlin Code Gen is deprecated and will be removed
 > Task :app:packageDebug
 > Task :app:createDebugApkListingFileRedirect
 > Task :app:assembleDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1795668038461.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1795668591076.json
 
 [Incubating] Problems report is available at: file:///home/runner/work/Edge-Ai/Edge-Ai/Android/src/build/reports/problems/problems-report.html
 
-BUILD SUCCESSFUL in 4m 25s
+BUILD SUCCESSFUL in 7m 7s
 47 actionable tasks: 47 executed
 Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
 ASSEMBLE_EXIT=0
 == tests: summary ==
-BUILD SUCCESSFUL in 11s
+BUILD SUCCESSFUL in 16s
 TEST_EXIT=0
