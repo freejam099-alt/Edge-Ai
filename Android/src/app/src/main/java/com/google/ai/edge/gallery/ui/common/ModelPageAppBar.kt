@@ -90,9 +90,7 @@ import com.google.ai.edge.gallery.ui.home.cloudModelDisplayName
 import com.google.ai.edge.gallery.ui.home.defaultCloudEndpoint
 import com.google.ai.edge.gallery.ui.home.defaultCloudProtocol
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
-import com.google.ai.edge.gallery.ui.theme.GalleryGlassIconButton
-import com.google.ai.edge.gallery.ui.theme.galleryGlass
-import dev.mttmcknn.seaglass.SeaGlassShape
+import com.google.ai.edge.gallery.ui.theme.GalleryIconButton
 import com.google.ai.edge.litertlm.ModelInfo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -180,9 +178,8 @@ fun ModelPageAppBar(
             Surface(
               onClick = { cloudMenuExpanded = true },
               enabled = !inProgress,
-              modifier = Modifier.galleryGlass(seed = 311, shape = SeaGlassShape.Capsule),
-              shape = RoundedCornerShape(50),
-              color = Color.Transparent,
+                            shape = RoundedCornerShape(50),
+              color = MaterialTheme.colorScheme.secondaryContainer,
               contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
             ) {
               Row(
@@ -270,14 +267,14 @@ fun ModelPageAppBar(
     navigationIcon =
       if (showCloudSettingsButton) {
         {
-          GalleryGlassIconButton(onClick = onCloudSettingsClicked, enabled = !inProgress, seed = 312) {
+          GalleryIconButton(onClick = onCloudSettingsClicked, enabled = !inProgress) {
             Icon(Icons.Rounded.Settings, contentDescription = "Settings")
           }
         }
       } else if (showBackButton) {
         {
           val enableBackButton = !isModelInitializing && !inProgress
-          GalleryGlassIconButton(onClick = onBackClicked, enabled = enableBackButton, seed = 313) {
+          GalleryIconButton(onClick = onBackClicked, enabled = enableBackButton) {
             Icon(
               imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
               contentDescription = stringResource(R.string.cd_navigate_back_icon),
@@ -293,7 +290,7 @@ fun ModelPageAppBar(
       val showConfigButton = !isCloudAgent && model.configs.isNotEmpty() && downloadSucceeded
       if (showConfigButton) {
         val enableConfigButton = !isModelInitializing && !inProgress && isModelInitialized
-        GalleryGlassIconButton(onClick = { showConfigDialog = true }, enabled = enableConfigButton, seed = 314) {
+        GalleryIconButton(onClick = { showConfigDialog = true }, enabled = enableConfigButton) {
           Icon(
             imageVector = Icons.Rounded.Tune,
             contentDescription = stringResource(R.string.cd_model_settings_icon),
@@ -302,7 +299,7 @@ fun ModelPageAppBar(
       }
       if (downloadSucceeded && shouldShowHistoryButton) {
         val enableHistoryButton = !isModelInitializing && !modelPreparing && !inProgress && isModelInitialized
-        GalleryGlassIconButton(onClick = { onHistoryClicked(model) }, enabled = enableHistoryButton, seed = 315) {
+        GalleryIconButton(onClick = { onHistoryClicked(model) }, enabled = enableHistoryButton) {
           Icon(
             imageVector = Icons.Rounded.History,
             contentDescription = stringResource(R.string.cd_chat_history),

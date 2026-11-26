@@ -19,7 +19,10 @@ package com.google.ai.edge.gallery.ui.theme
 import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -35,7 +38,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.google.ai.edge.gallery.proto.Theme
-import dev.mttmcknn.seaglass.SeaGlassMaterialTheme
 
 private val lightScheme =
   lightColorScheme(
@@ -338,6 +340,7 @@ fun StatusBarColorController(useDarkTheme: Boolean) {
   }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun GalleryTheme(content: @Composable () -> Unit) {
   val themeOverride = ThemeSettings.themeOverride
@@ -357,9 +360,12 @@ fun GalleryTheme(content: @Composable () -> Unit) {
   val customColorsPalette = if (darkTheme) darkCustomColors else lightCustomColors
 
   CompositionLocalProvider(LocalCustomColors provides customColorsPalette) {
-    MaterialTheme(colorScheme = colorScheme, typography = AppTypography) {
-      SeaGlassMaterialTheme(style = GalleryGlassRecipe, content = content)
-    }
+    MaterialExpressiveTheme(
+      colorScheme = colorScheme,
+      motionScheme = MotionScheme.expressive(),
+      typography = AppTypography,
+      content = content,
+    )
   }
 
   // Make sure the navigation bar stays transparent on manual theme changes.

@@ -16,6 +16,7 @@
 
 package com.google.ai.edge.gallery.ui.common.chat
 
+import com.google.ai.edge.gallery.ui.common.rememberStreamingText
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
@@ -50,11 +51,12 @@ fun MessageBodyText(
     }
   } else if (message.side == ChatSide.AGENT) {
       if (message.isMarkdown) {
+        val streamedText = rememberStreamingText(message.content, inProgress)
         // Streamed content can change several times per second. Render its current snapshot
         // directly: the buffered crossfade keeps an older markdown tree visible while its
         // animation runs, effectively queueing updates and delaying the newest tokens.
         MarkdownText(
-          text = message.content,
+          text = streamedText,
           modifier =
             Modifier.padding(vertical = 12.dp)
               .padding(horizontal = horizontalPadding)

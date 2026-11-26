@@ -63,8 +63,7 @@ import com.google.ai.edge.gallery.data.Model
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.ui.common.modelitem.StatusIcon
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
-import com.google.ai.edge.gallery.ui.theme.galleryGlass
-import dev.mttmcknn.seaglass.SeaGlassShape
+import com.google.ai.edge.gallery.ui.theme.galleryContainer
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -97,7 +96,7 @@ fun ModelPickerChip(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         modifier =
           Modifier.clip(CircleShape)
-            .galleryGlass(initialModel.name.hashCode(), SeaGlassShape.Capsule)
+            .galleryContainer(CircleShape)
             .clickable(enabled = enabled) {
               modelPickerModel = initialModel
               showModelPicker = true

@@ -141,8 +141,8 @@ import com.google.ai.edge.gallery.data.Model
 import com.google.ai.edge.gallery.data.SAMPLE_RATE
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.ui.theme.bodyLargeNarrow
-import com.google.ai.edge.gallery.ui.theme.GalleryGlassIconButton
-import com.google.ai.edge.gallery.ui.theme.galleryGlass
+import com.google.ai.edge.gallery.ui.theme.GalleryIconButton
+import com.google.ai.edge.gallery.ui.theme.galleryContainer
 import java.util.concurrent.Executors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -401,7 +401,7 @@ fun MessageInputText(
               modifier =
                 Modifier.padding(horizontal = 12.dp)
                   .padding(vertical = 8.dp)
-                  .galleryGlass(seed = 201)
+                  .galleryContainer(MaterialTheme.shapes.extraLarge, MaterialTheme.colorScheme.surfaceContainerHigh)
                   .animateContentSize(spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium))
             ) {
               // First row: text field for input.
@@ -446,10 +446,9 @@ fun MessageInputText(
                   // A plus button to show a popup menu to add stuff to the chat.
                   Box() {
                     val enableAddButton = !inProgress && !isResettingSession && !modelInitializing
-                    GalleryGlassIconButton(
+                    GalleryIconButton(
                       enabled = enableAddButton,
                       onClick = { showAddContentMenu = true },
-                      seed = 202,
                     ) {
                       Icon(
                         Icons.Outlined.Add,
@@ -760,9 +759,8 @@ fun MessageInputText(
                 // Stop button.
                 if (inProgress && showStopButtonWhenInProgress) {
                   if (!modelInitializing && !modelPreparing) {
-                    GalleryGlassIconButton(
+                    GalleryIconButton(
                       onClick = onStopButtonClicked,
-                      seed = 204,
                     ) {
                       Icon(
                         Icons.Rounded.Stop,
@@ -774,7 +772,7 @@ fun MessageInputText(
                 }
                 // Send button.
                 else {
-                  GalleryGlassIconButton(
+                  GalleryIconButton(
                     enabled =
                       !inProgress &&
                         !isResettingSession &&
@@ -792,7 +790,6 @@ fun MessageInputText(
                       pickedImages = emptyList()
                       pickedAudioClips = emptyList()
                     },
-                    seed = 203,
                   ) {
                     Icon(
                       Icons.AutoMirrored.Rounded.Send,
