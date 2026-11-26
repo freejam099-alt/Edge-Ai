@@ -1,0 +1,52 @@
+sha: 8f692071e23d18062475da62adff4c21f14dbe63
+run: 45757633310
+time: 2026-11-26T04:56:10Z
+== release build: errors summary ==
+> Task :app:minifyReleaseWithR8
+BUILD SUCCESSFUL in 6m 20s
+== release build: tail ==
+
+See https://youtrack.jetbrains.com/issue/KT-73255 for more details.
+w: file:///home/runner/work/Edge-Ai/Edge-Ai/Android/src/app/src/main/java/com/google/ai/edge/gallery/ui/modelmanager/HfModelDetailsSheet.kt:104:20 'fun rememberModalBottomSheetState(skipPartiallyExpanded: Boolean = ..., confirmValueChange: (SheetValue) -> Boolean = ...): SheetState' is deprecated. Use rememberBottomSheetState with Hidden initial value.
+w: file:///home/runner/work/Edge-Ai/Edge-Ai/Android/src/app/src/main/java/com/google/ai/edge/gallery/ui/modelmanager/ModelManagerViewModel.kt:234:3 This annotation is currently applied to the value parameter only, but in the future it will also be applied to field.
+- To opt in to applying to both value parameter and field, add '-Xannotation-default-target=param-property' to your compiler arguments.
+- To keep applying to the value parameter only, use the '@param:' annotation target.
+
+See https://youtrack.jetbrains.com/issue/KT-73255 for more details.
+
+> Task :app:compileReleaseJavaWithJavac
+> Task :app:hiltCollectClassesRelease
+> Task :app:hiltAggregateDepsRelease
+> Task :app:processReleaseJavaRes
+
+> Task :app:hiltJavaCompileRelease
+warning: Kapt support in Moshi Kotlin Code Gen is deprecated and will be removed in 2.0. Please migrate to KSP. https://github.com/square/moshi#codegen
+1 warning
+
+> Task :app:transformReleaseClassesWithAsm
+> Task :app:mergeReleaseGeneratedProguardFiles
+> Task :app:mergeReleaseJavaResource
+> Task :app:expandReleaseArtProfileWildcards
+> Task :app:generateReleaseLintVitalReportModel
+> Task :app:minifyReleaseWithR8
+> Task :app:lintVitalAnalyzeRelease
+> Task :app:lintVitalReportRelease
+> Task :app:lintVitalRelease
+> Task :app:convertShrunkResourcesToBinaryRelease
+> Task :app:compileReleaseArtProfile
+> Task :app:optimizeReleaseResources
+> Task :app:packageRelease
+> Task :app:createReleaseApkListingFileRedirect
+> Task :app:assembleRelease
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1795668592169.json
+
+[Incubating] Problems report is available at: file:///home/runner/work/Edge-Ai/Edge-Ai/Android/src/build/reports/problems/problems-report.html
+
+BUILD SUCCESSFUL in 6m 20s
+60 actionable tasks: 60 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+== apk ==
+-rw-r--r-- 1 runner runner 31825573 Nov 26 04:56 Android/src/app/build/outputs/apk/release/app-arm64-v8a-release.apk
+== signature (public cert info only) ==
+Verifies
+Number of signers: 1
