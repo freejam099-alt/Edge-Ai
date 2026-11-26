@@ -790,7 +790,6 @@ fun MessageInputText(
                       pickedImages = emptyList()
                       pickedAudioClips = emptyList()
                     },
-                    seed = 203,
                   ) {
                     Icon(
                       Icons.AutoMirrored.Rounded.Send,
