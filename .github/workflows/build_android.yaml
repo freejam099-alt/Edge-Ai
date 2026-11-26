@@ -2,6 +2,11 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
+    inputs:
+      allow_release_without_eay:
+        description: "Build a release even if the EAY_API_KEY secret is missing (the EAY provider will not work in that APK)"
+        type: boolean
+        default: false
   push:
     branches: [ "main" ]
     paths:
@@ -12,6 +17,9 @@ on:
     paths:
       - 'Android/**'
       - '.github/workflows/build_android.yaml'
+
+permissions:
+  contents: write
 
 jobs:
   build_apk:
@@ -27,9 +35,10 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
       - name: Install Android SDK Platform 37.1
         run: echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-37.1"
-      - name: Prepare bundled credential (repository secret EAY_API_KEY)
+      - name: Prepare bundled EAY credential (secret EAY_API_KEY)
         id: eay
         env:
           EAY_API_KEY_SECRET: ${{ secrets.EAY_API_KEY }}
@@ -40,16 +49,55 @@ jobs:
             echo "has_key=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_key=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Prepare release signing (secrets RELEASE_KEYSTORE_*)
+        id: sign
+        env:
+          KS_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KS_KEYPASS: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            printf '%s' "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            {
+              echo "RELEASE_KEYSTORE_FILE=$RUNNER_TEMP/release.jks"
+              echo "RELEASE_KEYSTORE_PASSWORD=$KS_PASS"
+              echo "RELEASE_KEY_ALIAS=$KS_ALIAS"
+              echo "RELEASE_KEY_PASSWORD=$KS_KEYPASS"
+            } >> "$GITHUB_ENV"
+            echo "has_keystore=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_keystore=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No release keystore secret; a release build would be signed with the debug key."
+          fi
+      - name: Decide build mode
+        id: mode
+        env:
+          HAS_KEY: ${{ steps.eay.outputs.has_key }}
+          ALLOW_INPUT: ${{ inputs.allow_release_without_eay }}
+        run: |
+          if [ "$HAS_KEY" = "true" ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          elif [ "$ALLOW_INPUT" = "true" ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "ALLOW_RELEASE_WITHOUT_EAY_KEY=true" >> "$GITHUB_ENV"
+            echo "::warning::Building a release WITHOUT the EAY credential (explicit opt-in). The EAY provider will not work."
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
             echo "::warning::Secret EAY_API_KEY is not set. Building a debug APK instead of a release APK."
           fi
       - name: Build release APK
-        if: steps.eay.outputs.has_key == 'true'
-        run: ./gradlew assembleRelease
+        if: steps.mode.outputs.release == 'true'
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease --console=plain --stacktrace 2>&1 | tee "$RUNNER_TEMP/release.log"
       - name: Verify Protobuf release reflection fields
-        if: steps.eay.outputs.has_key == 'true'
+        if: steps.mode.outputs.release == 'true'
         run: python3 scripts/check_protobuf_release.py
       - name: Verify ARM64 APK size target
-        if: steps.eay.outputs.has_key == 'true'
+        if: steps.mode.outputs.release == 'true'
         shell: bash
         run: |
           apk=app/build/outputs/apk/release/app-arm64-v8a-release.apk
@@ -59,8 +107,14 @@ jobs:
             echo "APK exceeds the 40 MB release target: $apk" >&2
             exit 1
           fi
+      - name: Verify APK signature
+        if: steps.mode.outputs.release == 'true'
+        shell: bash
+        run: |
+          apksigner=$(ls -d $ANDROID_HOME/build-tools/*/apksigner | sort -V | tail -1)
+          "$apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-arm64-v8a-release.apk 2>&1 | tee "$RUNNER_TEMP/sign.txt"
       - name: Upload arm64-v8a release APK
-        if: steps.eay.outputs.has_key == 'true'
+        if: steps.mode.outputs.release == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: gallery-release-apk-arm64-v8a
@@ -68,13 +122,34 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Build debug APK (no credential available)
-        if: steps.eay.outputs.has_key == 'false'
+        if: steps.mode.outputs.release == 'false'
         run: ./gradlew assembleDebug
       - name: Upload debug APK
-        if: steps.eay.outputs.has_key == 'false'
+        if: steps.mode.outputs.release == 'false'
         uses: actions/upload-artifact@v4
         with:
           name: gallery-debug-apk
           path: Android/src/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Publish release summary to ci-logs branch
+        if: always() && steps.mode.outputs.release == 'true'
+        working-directory: ${{ github.workspace }}
+        run: |
+          {
+            echo "sha: $GITHUB_SHA"; echo "run: $GITHUB_RUN_ID"; echo "time: $(date -u +%FT%TZ)"
+            echo "== release build: errors summary =="
+            grep -E "^e: |FAILED|What went wrong|Execution failed|Could not |error:|R8|Missing class|BUILD (SUCCESSFUL|FAILED)" "$RUNNER_TEMP/release.log" 2>/dev/null | head -120
+            echo "== release build: tail =="; tail -40 "$RUNNER_TEMP/release.log" 2>/dev/null
+            echo "== apk =="; ls -l Android/src/app/build/outputs/apk/release/*.apk 2>/dev/null
+            echo "== signature (public cert info only) =="; grep -E "Verifies|Signer #1 certificate (DN|SHA-256)|Number of signers|WARNING|ERROR" "$RUNNER_TEMP/sign.txt" 2>/dev/null
+          } > "$RUNNER_TEMP/release-summary.txt"
+          git config user.name "ci-bot"; git config user.email "ci-bot@users.noreply.github.com"
+          git fetch origin ci-logs 2>/dev/null || true
+          if git rev-parse --verify origin/ci-logs >/dev/null 2>&1; then
+            git checkout -q -B ci-logs origin/ci-logs
+          else
+            git checkout -q --orphan ci-logs && git rm -rq -f . 2>/dev/null || true
+          fi
+          mkdir -p logs && cp "$RUNNER_TEMP/release-summary.txt" logs/release.txt
+          git add logs/release.txt && git commit -q -m "release summary $GITHUB_SHA" && git push -q origin ci-logs

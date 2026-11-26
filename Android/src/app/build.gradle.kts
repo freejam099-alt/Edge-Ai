@@ -32,6 +32,9 @@ plugins {
 val bundledEayKey = providers.environmentVariable("EAY_API_KEY_FILE").orNull
   ?.let { file(it).readText().trim() }.orEmpty()
 val bundledEayKeyLiteral = groovy.json.JsonOutput.toJson(bundledEayKey)
+// Explicit opt-in only: ship a release without the EAY credential (the EAY provider will not work).
+val allowReleaseWithoutEayKey =
+  providers.environmentVariable("ALLOW_RELEASE_WITHOUT_EAY_KEY").orNull == "true"
 
 android {
   namespace = "com.google.ai.edge.gallery"
@@ -67,12 +70,25 @@ android {
     }
   }
 
+  // Release signing comes from the environment so no keystore or password lives in source control.
+  signingConfigs {
+    val releaseKeystorePath = providers.environmentVariable("RELEASE_KEYSTORE_FILE").orNull
+    if (releaseKeystorePath != null) {
+      create("release") {
+        storeFile = file(releaseKeystorePath)
+        storePassword = providers.environmentVariable("RELEASE_KEYSTORE_PASSWORD").orNull
+        keyAlias = providers.environmentVariable("RELEASE_KEY_ALIAS").orNull
+        keyPassword = providers.environmentVariable("RELEASE_KEY_PASSWORD").orNull
+      }
+    }
+  }
+
   buildTypes {
     release {
       isMinifyEnabled = true
       isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("debug")
+      signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
     }
   }
   compileOptions {
@@ -95,8 +111,9 @@ android {
 // A release without the bundled credential must never silently ship again.
 tasks.matching { it.name == "preReleaseBuild" }.configureEach {
   doFirst {
-    check(bundledEayKey.isNotBlank()) {
-      "Release requires EAY_API_KEY_FILE pointing to a private local credential file."
+    check(bundledEayKey.isNotBlank() || allowReleaseWithoutEayKey) {
+      "Release requires EAY_API_KEY_FILE pointing to a private local credential file " +
+        "(or ALLOW_RELEASE_WITHOUT_EAY_KEY=true to deliberately build without it)."
     }
   }
 }
