@@ -1,6 +1,6 @@
-sha: 5cc05b77b197919c9e1297f8df4d9653892595df
-run: 45755558181
-time: 2026-11-26T04:34:27Z
+sha: a6e6fc649097d70dd26549361490bee5a6af3f25
+run: 45756167835
+time: 2026-11-26T04:39:34Z
 == sdk platforms ==
   platforms;android-37.0             | 2             | Android SDK Platform 37.0        | platforms/android-37.0            
   platforms;android-37.1             | 1             | Android SDK Platform 37.1        | platforms/android-37.1            
@@ -15,42 +15,49 @@ time: 2026-11-26T04:34:27Z
   platforms;android-37.2-beta2                                                    | 2                 | Android SDK Platform 37.2-beta2                                                 
   platforms;android-37.2-beta3                                                    | 3                 | Android SDK Platform 37.2-beta3                                                 
 == assemble: errors/warnings summary ==
-> Task :app:checkDebugAarMetadata FAILED
+e: file:///home/runner/work/Edge-Ai/Edge-Ai/Android/src/app/src/main/java/com/google/ai/edge/gallery/customtasks/agentchat/AddMcpServerFromUrlDialog.kt:213:13 Unresolved reference 'ExposedDropdownMenu'.
+e: file:///home/runner/work/Edge-Ai/Edge-Ai/Android/src/app/src/main/java/com/google/ai/edge/gallery/customtasks/agentchat/AddMcpServerFromUrlDialog.kt:217:15 @Composable invocations can only happen from the context of a @Composable function
+e: file:///home/runner/work/Edge-Ai/Edge-Ai/Android/src/app/src/main/java/com/google/ai/edge/gallery/customtasks/agentchat/AddMcpServerFromUrlDialog.kt:224:15 @Composable invocations can only happen from the context of a @Composable function
+e: file:///home/runner/work/Edge-Ai/Edge-Ai/Android/src/app/src/main/java/com/google/ai/edge/gallery/customtasks/agentchat/AddMcpServerFromUrlDialog.kt:231:15 @Composable invocations can only happen from the context of a @Composable function
+e: file:///home/runner/work/Edge-Ai/Edge-Ai/Android/src/app/src/main/java/com/google/ai/edge/gallery/customtasks/agentchat/AddOrEditSkillBottomSheet.kt:539:11 Unresolved reference 'ExposedDropdownMenu'.
+e: file:///home/runner/work/Edge-Ai/Edge-Ai/Android/src/app/src/main/java/com/google/ai/edge/gallery/customtasks/agentchat/AddOrEditSkillBottomSheet.kt:541:15 @Composable invocations can only happen from the context of a @Composable function
+e: file:///home/runner/work/Edge-Ai/Edge-Ai/Android/src/app/src/main/java/com/google/ai/edge/gallery/ui/common/chat/MessageInputText.kt:793:21 No parameter with name 'seed' found.
+> Task :app:compileDebugKotlin FAILED
 * What went wrong:
-Execution failed for task ':app:checkDebugAarMetadata'.
-org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':app:checkDebugAarMetadata'.
+Execution failed for task ':app:compileDebugKotlin'.
+org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':app:compileDebugKotlin'.
 BUILD FAILED in 3m 38s
 ASSEMBLE_EXIT=1
 == assemble: tail ==
-
-  9.  Dependency 'androidx.compose.ui:ui-graphics-android:1.13.0' requires Android Gradle plugin 9.1.0 or higher.
-
-      This build currently uses Android Gradle plugin 9.0.1.
-
- 10.  Dependency 'androidx.compose.ui:ui-tooling-android:1.13.0' requires Android Gradle plugin 9.1.0 or higher.
-
-      This build currently uses Android Gradle plugin 9.0.1.
-
- 11.  Dependency 'androidx.compose.material3:material3-android:1.5.0' requires Android Gradle plugin 9.1.0 or higher.
-
-      This build currently uses Android Gradle plugin 9.0.1.
-
- 12.  Dependency 'androidx.core:core-ktx:1.19.0' requires Android Gradle plugin 9.1.0 or higher.
-
-      This build currently uses Android Gradle plugin 9.0.1.
-
- 13.  Dependency 'androidx.core:core:1.19.0' requires Android Gradle plugin 9.1.0 or higher.
-
-      This build currently uses Android Gradle plugin 9.0.1.
-
- 14.  Dependency 'androidx.compose.ui:ui-android:1.13.0' requires Android Gradle plugin 9.1.0 or higher.
-
-      This build currently uses Android Gradle plugin 9.0.1.
-	at com.android.build.gradle.internal.tasks.CheckAarMetadataWorkAction.execute(CheckAarMetadataTask.kt:288)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:36)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:23)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.executeMutable(HandleStaleOutputsStep.java:77)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.executeMutable(HandleStaleOutputsStep.java:43)
+	at org.gradle.internal.execution.steps.MutableStep.execute(MutableStep.java:25)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.lambda$execute$0(AssignMutableWorkspaceStep.java:35)
+	at org.gradle.api.internal.tasks.execution.TaskExecution$4.withWorkspace(TaskExecution.java:305)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:31)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:22)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:40)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:23)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.lambda$execute$2(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:39)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:46)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:34)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:44)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:31)
+	at org.gradle.internal.execution.impl.DefaultExecutionEngine$1.execute(DefaultExecutionEngine.java:68)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:132)
+	... 30 more
+Caused by: org.jetbrains.kotlin.gradle.tasks.CompilationErrorException: Compilation error. See log for more details
+	at org.jetbrains.kotlin.gradle.tasks.TasksUtilsKt.throwExceptionIfCompilationFailed(tasksUtils.kt:21)
+	at org.jetbrains.kotlin.compilerRunner.GradleKotlinCompilerWork.run(GradleKotlinCompilerWork.kt:115)
+	at org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction.execute(GradleCompilerRunnerWithWorkers.kt:74)
 	at org.gradle.workers.internal.DefaultWorkerServer.execute(DefaultWorkerServer.java:68)
 	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:64)
 	at org.gradle.workers.internal.NoIsolationWorkerFactory$1$1.create(NoIsolationWorkerFactory.java:61)
-	at org.gradle.internal.classloader.ClassLoaderUtils.executeInClassloader(ClassLoaderUtils.java:100)
+	at org.gradle.internal.classloader.ClassLoaderUtils.executeInClassloader(ClassLoaderUtils.java:102)
 	at org.gradle.workers.internal.NoIsolationWorkerFactory$1.lambda$execute$0(NoIsolationWorkerFactory.java:61)
 	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:44)
 	at org.gradle.workers.internal.AbstractWorker$1.call(AbstractWorker.java:41)
@@ -67,7 +74,7 @@ ASSEMBLE_EXIT=1
 	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.runExecution(DefaultConditionalExecutionQueue.java:194)
 	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner.access$700(DefaultConditionalExecutionQueue.java:127)
 	at org.gradle.internal.work.DefaultConditionalExecutionQueue$ExecutionRunner$1.run(DefaultConditionalExecutionQueue.java:169)
-	at org.gradle.internal.Factories$1.create(Factories.java:33)
+	at org.gradle.internal.Factories$1.create(Factories.java:30)
 	at org.gradle.internal.work.DefaultWorkerLeaseService.lambda$withLocksAcquired$0(DefaultWorkerLeaseService.java:269)
 	at org.gradle.internal.work.ResourceLockStatistics$1.measure(ResourceLockStatistics.java:42)
 	at org.gradle.internal.work.DefaultWorkerLeaseService.withLocksAcquired(DefaultWorkerLeaseService.java:267)
@@ -80,10 +87,9 @@ ASSEMBLE_EXIT=1
 
 
 BUILD FAILED in 3m 38s
-20 actionable tasks: 20 executed
+37 actionable tasks: 37 executed
 ASSEMBLE_EXIT=1
 == tests: summary ==
-> Task :app:checkDebugAarMetadata FAILED
 > Task :app:compileDebugKotlin FAILED
-BUILD FAILED in 44s
+BUILD FAILED in 12s
 TEST_EXIT=1
